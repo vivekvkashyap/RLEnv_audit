@@ -29,7 +29,11 @@ REFERENCE_SETS: list[tuple[str, str, str | None, str, str]] = [
 ]
 
 _DEFAULT_N = 10          # word-level shingle size
-_DEFAULT_THRESHOLD = 0.5  # containment of a question's shingles in a reference
+# Containment of a question's informative shingles in a single reference item.
+# Set high (0.8): true duplicates sit near 1.0, while same-template-different-
+# instance collisions (e.g. two quadratics sharing boilerplate phrasing but
+# different numbers) land lower and are correctly NOT flagged.
+_DEFAULT_THRESHOLD = 0.8
 _DEFAULT_MAX_REF = 1000   # cap problems loaded per reference set
 _DEFAULT_MAX_DATASET = 500  # cap env questions scanned
 
@@ -68,16 +72,23 @@ def _question_text(row: dict) -> str:
 
 
 def _load_reference_index(n: int, max_ref: int, sets: list[str] | None):
-    """Build ``shingle -> (set_name, ref_idx, excerpt)`` over the reference sets.
+    """Build ``shingle -> (set_name, ref_idx, excerpt)`` plus a document-frequency
+    map over the reference sets.
 
-    Returns ``(index, loaded, unavailable, truncated)``.
+    ``df[shingle]`` = number of distinct reference items containing it. A shingle
+    in many items is shared boilerplate (problem templates, instruction prefixes),
+    not evidence of contamination, so the matcher later drops high-df shingles.
+
+    Returns ``(index, df, loaded, unavailable, truncated, total_items)``.
     """
     from datasets import load_dataset
 
     index: dict[str, tuple[str, int, str]] = {}
+    df: dict[str, int] = {}
     loaded: dict[str, int] = {}
     unavailable: dict[str, str] = {}
     truncated: list[str] = []
+    total_items = 0
 
     for name, hf_id, config, split, field in REFERENCE_SETS:
         if sets and name not in sets:
@@ -101,13 +112,15 @@ def _load_reference_index(n: int, max_ref: int, sets: list[str] | None):
             ds = ds.select(range(max_ref))
 
         loaded[name] = len(ds)
+        total_items += len(ds)
         for idx, text in enumerate(ds[field]):
-            sh = _shingles(_normalize(text), n)
+            sh = _shingles(_normalize(text), n)  # a set: each shingle once per item
             excerpt = " ".join(str(text).split())[:120]
             for s in sh:
                 index.setdefault(s, (name, idx, excerpt))
+                df[s] = df.get(s, 0) + 1
 
-    return index, loaded, unavailable, truncated
+    return index, df, loaded, unavailable, truncated, total_items
 
 
 def check_contamination(handle: EnvHandle, config: dict) -> CheckResult:
@@ -122,7 +135,9 @@ def check_contamination(handle: EnvHandle, config: dict) -> CheckResult:
         return CheckResult("contamination", CheckStatus.SKIP, "environment exposes no dataset")
 
     try:
-        index, loaded, unavailable, truncated = _load_reference_index(n, max_ref, only_sets)
+        index, df, loaded, unavailable, truncated, total_items = _load_reference_index(
+            n, max_ref, only_sets
+        )
     except Exception as exc:
         return CheckResult(
             "contamination", CheckStatus.SKIP,
@@ -136,6 +151,10 @@ def check_contamination(handle: EnvHandle, config: dict) -> CheckResult:
             details={"unavailable": unavailable},
         )
 
+    # A shingle appearing in this many reference items is boilerplate (shared
+    # template / instruction text), not a fingerprint of a specific problem.
+    df_cutoff = max(2, int(config.get("contamination_df_cutoff", 0.01 * total_items)))
+
     matches: list[dict] = []
     scanned = 0
     for i, row in enumerate(rows):
@@ -145,10 +164,14 @@ def check_contamination(handle: EnvHandle, config: dict) -> CheckResult:
             continue
         scanned += 1
 
-        # Tally shared shingles per reference item; containment vs the question.
+        # Keep only informative (non-boilerplate) shingles, then tally shared
+        # ones per reference item; containment is measured over those.
+        informative = [s for s in sh if df.get(s, 0) <= df_cutoff]
+        if not informative:
+            continue
         per_ref: dict[tuple[str, int], int] = {}
         excerpt_of: dict[tuple[str, int], str] = {}
-        for s in sh:
+        for s in informative:
             hit = index.get(s)
             if hit:
                 key = (hit[0], hit[1])
@@ -157,8 +180,12 @@ def check_contamination(handle: EnvHandle, config: dict) -> CheckResult:
         if not per_ref:
             continue
         (best_set, best_idx), shared = max(per_ref.items(), key=lambda kv: kv[1])
-        containment = shared / len(sh)
-        if containment >= threshold:
+        containment = shared / len(informative)
+        # Need both enough informative overlap AND high containment. The
+        # min-shingle floor (capped at the question's length) blocks single
+        # coincidental matches without missing short exact duplicates.
+        min_shared = min(3, len(informative))
+        if shared >= min_shared and containment >= threshold:
             matches.append(
                 {
                     "dataset_index": i,
@@ -177,6 +204,7 @@ def check_contamination(handle: EnvHandle, config: dict) -> CheckResult:
         "questions_scanned": scanned,
         "shingle_n": n,
         "containment_threshold": threshold,
+        "boilerplate_df_cutoff": df_cutoff,
         "matches": matches,
     }
     avail_note = f"checked {scanned} questions vs {', '.join(loaded)}"

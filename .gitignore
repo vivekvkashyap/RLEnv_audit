@@ -25,3 +25,8 @@ report.json
 
 # OS
 .DS_Store
+
+# Survey run artifacts
+survey_reports/
+survey.json
+.venv311/
