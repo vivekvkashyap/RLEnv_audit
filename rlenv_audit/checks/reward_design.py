@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from rlenv_audit.adapters.verifiers import EnvHandle, ScoringError
 from rlenv_audit.checks.base import CheckResult, CheckStatus
+from rlenv_audit.probes import generate_probes
 
 _EPS = 1e-9
 _GARBAGE = "qwzx plover 5821 nthe"
@@ -93,6 +94,13 @@ def check_reward_design(handle: EnvHandle, config: dict) -> CheckResult:
         )
 
     # ---- behavioral probe -------------------------------------------------
+    # Model-written, env-adaptive probes (when an endpoint is configured): a
+    # model reads this env's system prompt + tasks and writes realistic gold /
+    # wrong completions in the env's own format. Golds join the gold candidates
+    # — discrimination takes the max, so a probe that's secretly wrong can't
+    # hurt; it just doesn't raise the max. Shared (cached) with determinism.
+    generated = generate_probes(handle, config, rows)
+
     per_task: list[dict] = []
     all_rewards: list[float] = []
     discriminating = 0
@@ -117,6 +125,10 @@ def check_reward_design(handle: EnvHandle, config: dict) -> CheckResult:
                 probes[label] = score(text)
             for label, text in _wrong_texts(handle, ans):
                 probes[label] = score(text)
+        for p in generated.get(i, []):
+            # label so the gold-max logic below picks generated golds up too
+            label = ("gold_" if p["kind"].startswith("gold") else "wrong_") + p["label"]
+            probes[label] = score(p["text"])
         probes["empty"] = score("")
         probes["garbage"] = score(_GARBAGE)
 
@@ -230,6 +242,7 @@ def check_reward_design(handle: EnvHandle, config: dict) -> CheckResult:
         "discrimination_rate": discrimination_rate,
         "baseline_floor": min(floors) if floors else None,
         "tasks_probed": probed,
+        "model_generated_probes": sum(len(v) for v in generated.values()),
         "per_task": per_task,
         "recommendations": recommendations,
     }

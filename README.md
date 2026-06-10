@@ -129,6 +129,14 @@ scorecard = rlenv_audit.audit("gsm8k", only=["determinism", "reward_design"])
 `SKIP` ≠ `FAIL`. A check SKIPs when it can't run *here* (no GPU, Docker down, no
 endpoint, no dataset) — it is never counted against the environment.
 
+> **Model-generated probes.** With an endpoint configured, determinism and
+> reward_design additionally use probe completions *written by a model that has
+> read this env's system prompt and tasks* — so the reward-awarding branch is
+> exercised on envs whose answers aren't math-shaped (code, SQL, JSON, games).
+> Generated golds are round-trip validated through the env's parser, and the
+> battery is generated once per audit and shared across checks. Without an
+> endpoint the static battery is used; behavior is unchanged.
+
 ## Rating & recommendations
 
 Beyond per-check status, the report gives you:

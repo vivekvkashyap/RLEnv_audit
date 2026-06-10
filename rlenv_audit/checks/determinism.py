@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from rlenv_audit.adapters.verifiers import EnvHandle, ScoringError
 from rlenv_audit.checks.base import CheckResult, CheckStatus
+from rlenv_audit.probes import generate_probes
 
 # Treat reward differences below this as float noise, not non-determinism.
 _EPSILON = 1e-9
@@ -53,6 +54,13 @@ def check_determinism(handle: EnvHandle, config: dict) -> CheckResult:
             "environment exposes no dataset to build completions from",
         )
 
+    # When a model endpoint is configured, add env-adaptive probes written by a
+    # model that has read this env's system prompt and tasks — so the reward-
+    # awarding branch is exercised on envs whose answers aren't math-shaped
+    # (code, SQL, JSON, games). Determinism doesn't need them to be *correct*,
+    # just realistic; every probe is simply scored repeatedly.
+    generated = generate_probes(handle, config, rows)
+
     findings: list[dict] = []
     scored_any = False
     nondeterministic: list[str] = []
@@ -60,7 +68,9 @@ def check_determinism(handle: EnvHandle, config: dict) -> CheckResult:
     for i, row in enumerate(rows):
         prompt, answer, info = row["prompt"], row["answer"], row["info"]
         cols = row.get("raw", {})
-        for label, text in _completions_for(handle, answer):
+        battery = _completions_for(handle, answer)
+        battery += [(p["label"], p["text"]) for p in generated.get(i, [])]
+        for label, text in battery:
             rewards: list[float] = []
             try:
                 for _ in range(repeats):
@@ -104,6 +114,7 @@ def check_determinism(handle: EnvHandle, config: dict) -> CheckResult:
         "n_prompts": len(rows),
         "repeats": repeats,
         "completions_scored": total,
+        "model_generated_probes": sum(len(v) for v in generated.values()),
         "nondeterministic": nondeterministic,
         "findings": findings,
     }
