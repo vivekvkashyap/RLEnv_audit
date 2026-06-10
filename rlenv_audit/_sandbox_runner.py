@@ -21,6 +21,7 @@ def main() -> None:
 
     handle = load_handle(payload["env_id"], payload.get("env_args") or {})
     task = payload["task"]
+    columns = task.get("columns") or {}
     results: dict[str, dict] = {}
     for cheat in payload["cheats"]:
         try:
@@ -29,6 +30,7 @@ def main() -> None:
                 task["prompt"],
                 task.get("answer", ""),
                 task.get("info") or {},
+                columns,
             )
             results[cheat["label"]] = {"reward": reward, "metrics": metrics}
         except Exception as exc:  # a cheat that crashes scoring is not an exploit

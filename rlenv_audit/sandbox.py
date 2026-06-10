@@ -36,6 +36,23 @@ class SandboxError(Exception):
     """Raised when the sandbox cannot run (Docker down, image missing, timeout)."""
 
 
+def _error_tail(stderr: str) -> str:
+    """Pull a useful one-liner out of a container's stderr for a SKIP message —
+    the last real error line, ignoring noisy warnings."""
+    lines = [
+        ln.strip()
+        for ln in stderr.splitlines()
+        if ln.strip() and "Warning" not in ln and not ln.startswith("Map")
+    ]
+    if not lines:
+        return "(no stderr)"
+    # Prefer the last line mentioning an error/exception, else just the tail.
+    for ln in reversed(lines):
+        if any(tok in ln for tok in ("Error", "error", "Exception", "Could not", "not found")):
+            return ln[:240]
+    return lines[-1][:240]
+
+
 def docker_available() -> tuple[bool, str]:
     """Return ``(ok, message)``. ``ok`` is False (with a reason) if Docker can't
     be used — the exploits check turns this into a clean SKIP."""
@@ -58,10 +75,10 @@ def _mounts() -> dict[str, dict[str, str]]:
 
     volumes: dict[str, dict[str, str]] = {}
 
-    def add(path: str) -> None:
+    def add(path: str, mode: str = "ro") -> None:
         rp = os.path.realpath(path)
         if rp and os.path.exists(rp):
-            volumes[rp] = {"bind": rp, "mode": "ro"}
+            volumes[rp] = {"bind": rp, "mode": mode}
 
     # Project source (holds the editable rlenv_audit package + usually the venv).
     project_root = os.path.realpath(str(Path(rlenv_audit.__file__).resolve().parent.parent))
@@ -76,10 +93,13 @@ def _mounts() -> dict[str, dict[str, str]]:
     # resolves inside the container).
     python_home = str(Path(os.path.realpath(sys.executable)).parent.parent)
     add(python_home)
-    # HuggingFace cache so cached datasets load offline.
+    # HuggingFace cache so cached datasets load offline. Mounted read-WRITE:
+    # many envs (re)build/cache their dataset at load time and fail on a
+    # read-only cache. The container is still network-isolated, resource-capped
+    # and ephemeral, so the only effect is normal dataset caching.
     hf_cache = Path.home() / ".cache" / "huggingface"
     if hf_cache.exists():
-        add(str(hf_cache))
+        add(str(hf_cache), mode="rw")
 
     return volumes
 
@@ -156,6 +176,7 @@ def run_scoring(
         try:
             result = container.wait(timeout=timeout_s)
             logs = container.logs(stdout=True, stderr=False).decode("utf-8", "replace")
+            errs = container.logs(stdout=False, stderr=True).decode("utf-8", "replace")
             status = result.get("StatusCode", 1)
         except Exception as exc:
             try:
@@ -173,7 +194,7 @@ def run_scoring(
             if line.startswith(_RESULT_MARKER):
                 return json.loads(line[len(_RESULT_MARKER):])
         raise SandboxError(
-            f"sandbox produced no result (exit {status}). Last output: {logs[-300:]!r}"
+            f"env failed to load/score in the sandbox (exit {status}): {_error_tail(errs)}"
         )
     finally:
         shutil.rmtree(scratch, ignore_errors=True)

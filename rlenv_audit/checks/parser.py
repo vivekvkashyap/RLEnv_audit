@@ -39,18 +39,23 @@ def _candidate_wrappers(ans: str) -> list[tuple[str, str]]:
     ]
 
 
-def _perturbations(canonical: str) -> list[tuple[str, str]]:
+def _perturbations(canonical: str, ans: str) -> list[tuple[str, str]]:
     """(label, perturbed text) — each should still parse to the gold answer."""
-    return [
+    perts = [
         ("canonical", canonical),
         ("surrounding_whitespace", f"   \n  {canonical}  \n   "),
         ("trailing_punctuation", f"{canonical}."),
         ("trailing_newlines", f"{canonical}\n\n"),
         ("leading_reasoning", f"Let me work through this step by step. {canonical}"),
         ("stated_twice", f"{canonical} So, again: {canonical}"),
-        ("uppercased", canonical.upper()),
-        ("lowercased", canonical.lower()),
     ]
+    # Casing only tests the parser's structural tokens (e.g. \BOXED vs \boxed).
+    # If the answer itself has letters, recasing would change the answer's
+    # content, not just its format — that's not a parser bug, so skip it.
+    if not any(c.isalpha() for c in ans):
+        perts.append(("uppercased", canonical.upper()))
+        perts.append(("lowercased", canonical.lower()))
+    return perts
 
 
 def check_parser(handle: EnvHandle, config: dict) -> CheckResult:
@@ -64,6 +69,22 @@ def check_parser(handle: EnvHandle, config: dict) -> CheckResult:
         return CheckResult("parser", CheckStatus.SKIP, "environment exposes no dataset")
 
     parser = handle.parser
+
+    # A pass-through/identity parser returns the whole message verbatim — answer
+    # extraction then lives in the reward function, not the parser. Perturbing
+    # the text would "fail" trivially and mislead, so don't test it as a parser.
+    sentinel = "qx7 sentinel answer zz9 trailing words"
+    try:
+        passthrough = _norm(parser.parse_answer(_as_completion(sentinel))) == sentinel
+    except Exception:
+        passthrough = False
+    if passthrough:
+        return CheckResult(
+            "parser", CheckStatus.SKIP,
+            "env uses a pass-through parser (answer extraction is in the reward function, "
+            "not the parser) — nothing parser-specific to perturb",
+        )
+
     per_perturbation_pass: dict[str, int] = {}
     per_perturbation_total: dict[str, int] = {}
     findings: list[dict] = []
@@ -74,10 +95,14 @@ def check_parser(handle: EnvHandle, config: dict) -> CheckResult:
         if not ans:
             continue
 
-        # Discover a canonical wrapper this parser actually extracts the answer from.
+        # Discover a canonical wrapper this parser actually extracts the answer
+        # from. First ask the parser to format the answer itself (XMLParser etc.),
+        # then fall back to generic format guesses.
         canonical = None
         canon_label = None
-        for label, wrapper in _candidate_wrappers(ans):
+        from_parser = handle.canonical_answer(ans)
+        candidates = ([("parser_format", from_parser)] if from_parser else []) + _candidate_wrappers(ans)
+        for label, wrapper in candidates:
             try:
                 got = parser.parse_answer(_as_completion(wrapper))
             except Exception:
@@ -91,7 +116,7 @@ def check_parser(handle: EnvHandle, config: dict) -> CheckResult:
             continue
 
         rows_tested += 1
-        for label, text in _perturbations(canonical):
+        for label, text in _perturbations(canonical, ans):
             try:
                 got = parser.parse_answer(_as_completion(text))
                 ok = _norm(got) == ans

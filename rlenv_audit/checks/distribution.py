@@ -93,7 +93,7 @@ def check_distribution(handle: EnvHandle, config: dict) -> CheckResult:
     rewards: list[float] = []
     for r, text in zip(rows, completions):
         try:
-            reward, _ = handle.score(text, r["prompt"], r["answer"], r["info"])
+            reward, _ = handle.score(text, r["prompt"], r["answer"], r["info"], r.get("raw"))
         except ScoringError:
             continue
         rewards.append(reward)
@@ -106,7 +106,9 @@ def check_distribution(handle: EnvHandle, config: dict) -> CheckResult:
     # Does an empty response already earn reward?
     empty_reward = None
     try:
-        empty_reward, _ = handle.score("", rows[0]["prompt"], rows[0]["answer"], rows[0]["info"])
+        empty_reward, _ = handle.score(
+            "", rows[0]["prompt"], rows[0]["answer"], rows[0]["info"], rows[0].get("raw")
+        )
     except ScoringError:
         pass
 

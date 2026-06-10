@@ -82,34 +82,72 @@ class EnvHandle:
     def _run(self, coro: Any) -> Any:
         return self._loop.run_until_complete(coro)
 
+    def canonical_answer(self, answer: str) -> str | None:
+        """Produce a completion string the env's parser extracts ``answer`` from.
+
+        Prefers the parser's own ``format()`` (e.g. ``XMLParser`` wraps the
+        ``answer_field`` in its tags); verifies by round-trip. Returns ``None``
+        if the parser can't be coaxed into round-tripping — callers then fall
+        back to generic format guesses. Used by the parser and exploit checks so
+        both adapt to each env's answer format instead of assuming one.
+        """
+        parser = self.parser
+        if parser is None:
+            return None
+        fmt = getattr(parser, "format", None)
+        field = getattr(parser, "answer_field", None)
+        if callable(fmt) and field:
+            try:
+                text = fmt(**{field: answer})
+                got = parser.parse_answer([{"role": "assistant", "content": text}])
+                if got is not None and str(got).strip() == str(answer).strip():
+                    return text
+            except Exception:
+                pass
+        return None
+
+    # Dataset columns that verifiers already treats specially; everything else
+    # in a row is exposed to reward functions as a named argument.
+    _RESERVED_COLS = {"prompt", "answer", "info", "example_id"}
+
     def score(
         self,
-        text: str,
+        text: Any,
         prompt: Any,
         answer: str = "",
         info: dict[str, Any] | None = None,
-        extra: dict[str, Any] | None = None,
+        columns: dict[str, Any] | None = None,
     ) -> tuple[float, dict[str, float]]:
-        """Score a single assistant completion through the env's rubric.
+        """Score a completion through the env's rubric.
 
-        ``text`` is the assistant message content (what a model would have
-        produced). Returns ``(reward, metrics)`` where ``reward`` is the
-        aggregate float and ``metrics`` maps each reward-function name to its
-        score. Synchronous wrapper over the async verifiers path; works
-        uniformly across plain ``Rubric``, ``MathRubric``, and ``RubricGroup``.
+        ``text`` is either the assistant message content (a string, the common
+        case) or a ready-made ``Messages`` list for multi-message completions.
+        ``columns`` carries the rest of the dataset row so reward functions that
+        read custom fields (test cases, oracles, …) get them — passed both via
+        ``state["input"]`` (verifiers injects non-reserved input fields as named
+        args) and at the top level of ``state`` (some rubrics read it directly).
+
+        Returns ``(reward, metrics)``. Synchronous wrapper over the async
+        verifiers path; works uniformly across ``Rubric``, ``MathRubric``, and
+        ``RubricGroup``.
         """
         if self.rubric is None:
             raise ScoringError(f"environment '{self.env_id}' has no rubric")
 
+        completion = text if isinstance(text, list) else [{"role": "assistant", "content": text}]
+        cols = {k: v for k, v in (columns or {}).items() if k not in self._RESERVED_COLS}
+
         state: dict[str, Any] = {
             "prompt": prompt,
-            "completion": [{"role": "assistant", "content": text}],
+            "completion": completion,
             "answer": answer,
             "info": info or {},
             "task": None,
-            "input": {"prompt": prompt, "answer": answer, "info": info or {}, **(extra or {})},
+            "input": {"prompt": prompt, "answer": answer, "info": info or {}, **cols},
             "trajectory": [],
         }
+        for key, value in cols.items():
+            state.setdefault(key, value)
 
         try:
             # score_rollout asserts there are no group-level reward funcs;

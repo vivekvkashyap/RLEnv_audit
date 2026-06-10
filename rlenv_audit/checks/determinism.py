@@ -52,11 +52,12 @@ def check_determinism(handle: EnvHandle, config: dict) -> CheckResult:
 
     for i, row in enumerate(rows):
         prompt, answer, info = row["prompt"], row["answer"], row["info"]
+        cols = row.get("raw", {})
         for label, text in _completions_for(answer):
             rewards: list[float] = []
             try:
                 for _ in range(repeats):
-                    reward, _metrics = handle.score(text, prompt, answer, info)
+                    reward, _metrics = handle.score(text, prompt, answer, info, cols)
                     rewards.append(reward)
             except ScoringError:
                 # This completion couldn't be scored at all — note and move on.

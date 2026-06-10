@@ -21,16 +21,21 @@ _WARM_CALLS = 10
 _BATCH = 8
 
 
-def _build_state(prompt, answer, info, text):
-    return {
+def _build_state(prompt, answer, info, text, cols=None):
+    cols = {k: v for k, v in (cols or {}).items()
+            if k not in {"prompt", "answer", "info", "example_id"}}
+    state = {
         "prompt": prompt,
         "completion": [{"role": "assistant", "content": text}],
         "answer": answer,
         "info": info or {},
         "task": None,
-        "input": {"prompt": prompt, "answer": answer, "info": info or {}},
+        "input": {"prompt": prompt, "answer": answer, "info": info or {}, **cols},
         "trajectory": [],
     }
+    for k, v in cols.items():
+        state.setdefault(k, v)
+    return state
 
 
 def _batched_score(handle: EnvHandle, states) -> None:
@@ -53,12 +58,13 @@ def check_latency(handle: EnvHandle, config: dict) -> CheckResult:
         return CheckResult("latency", CheckStatus.SKIP, "environment exposes no dataset")
     row = rows[0]
     prompt, answer, info = row["prompt"], row["answer"], row["info"]
+    cols = row.get("raw", {})
     text = f"\\boxed{{{answer}}}"
 
     # Cold: first call pays any one-time setup cost.
     try:
         t0 = time.perf_counter()
-        handle.score(text, prompt, answer, info)
+        handle.score(text, prompt, answer, info, cols)
         cold_s = time.perf_counter() - t0
     except ScoringError as exc:
         return CheckResult("latency", CheckStatus.SKIP, f"could not score a completion: {exc}")
@@ -67,7 +73,7 @@ def check_latency(handle: EnvHandle, config: dict) -> CheckResult:
     warm: list[float] = []
     for _ in range(warm_calls):
         t0 = time.perf_counter()
-        handle.score(text, prompt, answer, info)
+        handle.score(text, prompt, answer, info, cols)
         warm.append(time.perf_counter() - t0)
 
     warm_sorted = sorted(warm)
@@ -79,10 +85,10 @@ def check_latency(handle: EnvHandle, config: dict) -> CheckResult:
     speedup = None
     parallel_detail: dict = {}
     try:
-        states = [_build_state(prompt, answer, info, text) for _ in range(_BATCH)]
+        states = [_build_state(prompt, answer, info, text, cols) for _ in range(_BATCH)]
         t0 = time.perf_counter()
         for _ in range(_BATCH):
-            handle.score(text, prompt, answer, info)
+            handle.score(text, prompt, answer, info, cols)
         seq_s = time.perf_counter() - t0
 
         t0 = time.perf_counter()

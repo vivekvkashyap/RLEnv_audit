@@ -148,7 +148,39 @@ rlenv-audit run <env-id> --model <name>   # reference model for distribution
 rlenv-audit list-checks                   # checks + what each needs
 ```
 
-## 9. Honest scope statement
+## 9. Validated environment types & known limitations
+
+The tool is built generically over the `verifiers` API and validated on four
+structurally different env types:
+
+| Env | Type | Notes |
+| --- | --- | --- |
+| `gsm8k` | `SingleTurnEnv` + `MathRubric`/`RubricGroup` | reference env |
+| `reverse_text` | `SingleTurnEnv` + `XMLParser` | continuous LCS reward |
+| `wordle` | `TextArenaEnv` (multi-turn) | game env |
+| `math_group` | `EnvGroup` | aggregates sub-envs |
+
+To stay env-agnostic the adapter threads *all* dataset columns into the scoring
+state, and the parser/exploit checks discover each env's canonical answer format
+from the parser itself (`parser.format(...)`), rather than assuming `\boxed{}`.
+
+Honest limitations (each degrades to a clean SKIP, never a crash):
+
+* **Multi-turn / tool / agentic rewards.** Scoring submits a single synthetic
+  completion; rewards that depend on a real multi-turn trajectory or tool I/O
+  can't be reproduced without a model, so determinism/exploits give a weaker
+  signal there.
+* **Offline exploit sandbox.** The sandbox runs with no network. Envs needing
+  data not already cached (e.g. an NLTK corpus) or an external service fail to
+  load *inside the container* → exploits SKIPs with the reason surfaced.
+* **Pass-through parsers.** When `env.parser` does no extraction (the reward
+  function extracts the answer itself), the parser check SKIPs — there's nothing
+  parser-specific to perturb.
+* **Incompatible env deps.** Some Hub envs pin dependencies that conflict with
+  `verifiers==0.1.14` and won't install (e.g. `math_python`); those can't be
+  audited under this pin.
+
+## 10. Honest scope statement
 
 v0 is **six checks, one format (`verifiers`), one command**. There is no plugin
 system, no config-file framework, no multi-format support — on purpose. The
