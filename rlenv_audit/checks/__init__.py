@@ -55,12 +55,14 @@ def _load_builtin_checks() -> None:
     from rlenv_audit.checks import parser  # noqa: F401
     from rlenv_audit.checks import contamination  # noqa: F401
     from rlenv_audit.checks import latency  # noqa: F401
+    from rlenv_audit.checks import distribution  # noqa: F401
 
     register(determinism.SPEC)
     register(exploits.SPEC)
     register(parser.SPEC)
     register(contamination.SPEC)
     register(latency.SPEC)
+    register(distribution.SPEC)
 
 
 _load_builtin_checks()

@@ -21,7 +21,7 @@ proven.
 - [x] **6. feat(parser)** — parser-robustness check.
 - [x] **7. feat(contamination)** — n-gram overlap vs cached eval sets.
 - [x] **8. feat(latency)** — timing check.
-- [ ] **9. feat(distribution)** — GPU/vLLM check; SKIP-degrading when absent.
+- [x] **9. feat(distribution)** — GPU/vLLM check; SKIP-degrading when absent.
 - [ ] **10. docs+tests** — README, sample scorecard, what each check means; real
   tests in `tests/`.
 - [ ] **11. push** — `git push -u origin main` after confirming the remote +
