@@ -167,17 +167,27 @@ class EnvHandle:
     def dataset(self, n: int = -1, split: str = "train") -> list[dict[str, Any]]:
         """Return normalized dataset rows: ``{prompt, answer, info, raw}``.
 
-        ``split="eval"`` reads the eval dataset (falls back to train in
-        verifiers). Returns ``[]`` if the env exposes no dataset.
+        Tries the requested split, then falls back to the other one — many Hub
+        envs are *eval-only* (no train dataset) or train-only, and a check that
+        needs "some tasks" shouldn't care which split they came from. Returns
+        ``[]`` only if the env exposes no usable dataset at all.
         """
-        try:
-            if split == "eval":
-                ds = self.env.get_eval_dataset(n=n)
-            else:
-                ds = self.env.get_dataset(n=n)
-        except Exception:
-            return []
-        if ds is None:
+
+        def _load(which: str):
+            try:
+                if which == "eval":
+                    return self.env.get_eval_dataset(n=n)
+                return self.env.get_dataset(n=n)
+            except Exception:
+                return None
+
+        order = ["eval", "train"] if split == "eval" else ["train", "eval"]
+        ds = None
+        for which in order:
+            ds = _load(which)
+            if ds is not None and len(ds) > 0:
+                break
+        if ds is None or len(ds) == 0:
             return []
 
         rows: list[dict[str, Any]] = []

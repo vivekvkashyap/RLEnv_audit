@@ -89,10 +89,16 @@ def _mounts() -> dict[str, dict[str, str]]:
     venv = os.path.realpath(sys.prefix)
     if not venv.startswith(project_root + os.sep):
         add(venv)
-    # The uv-managed CPython the venv's python symlinks into (so the symlink
-    # resolves inside the container).
-    python_home = str(Path(os.path.realpath(sys.executable)).parent.parent)
-    add(python_home)
+    # The CPython the venv's python symlinks into (so the symlink resolves in
+    # the container). The venv often points at a *versionless* uv alias dir
+    # (cpython-3.11 -> cpython-3.11.14), so mount both the resolved version dir
+    # and, when it's a uv layout, the whole uv python root that holds the alias.
+    real_exe = Path(os.path.realpath(sys.executable))
+    add(str(real_exe.parent.parent))
+    for parent in real_exe.parents:
+        if parent.name == "python" and parent.parent.name == "uv":
+            add(str(parent))
+            break
     # HuggingFace cache so cached datasets load offline. Mounted read-WRITE:
     # many envs (re)build/cache their dataset at load time and fail on a
     # read-only cache. The container is still network-isolated, resource-capped
