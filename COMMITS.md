@@ -20,7 +20,7 @@ proven.
   check running cheat patterns inside it; SKIP cleanly if Docker is down.
 - [x] **6. feat(parser)** — parser-robustness check.
 - [x] **7. feat(contamination)** — n-gram overlap vs cached eval sets.
-- [ ] **8. feat(latency)** — timing check.
+- [x] **8. feat(latency)** — timing check.
 - [ ] **9. feat(distribution)** — GPU/vLLM check; SKIP-degrading when absent.
 - [ ] **10. docs+tests** — README, sample scorecard, what each check means; real
   tests in `tests/`.
