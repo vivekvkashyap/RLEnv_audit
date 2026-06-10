@@ -18,7 +18,7 @@ proven.
   + `cli.py` (`run`, `list-checks`). **Milestone proven on gsm8k.**
 - [x] **5. feat(sandbox+exploits)** — `sandbox.py` Docker isolation + exploits
   check running cheat patterns inside it; SKIP cleanly if Docker is down.
-- [ ] **6. feat(parser)** — parser-robustness check.
+- [x] **6. feat(parser)** — parser-robustness check.
 - [ ] **7. feat(contamination)** — n-gram overlap vs cached eval sets.
 - [ ] **8. feat(latency)** — timing check.
 - [ ] **9. feat(distribution)** — GPU/vLLM check; SKIP-degrading when absent.
