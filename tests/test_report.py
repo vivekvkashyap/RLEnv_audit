@@ -38,3 +38,30 @@ def test_json_round_trip_preserves_details():
 def test_status_str_is_clean():
     assert str(CheckStatus.PASS) == "PASS"
     assert f"{CheckStatus.SKIP}" == "SKIP"
+
+
+def test_rating_excludes_skips_and_grades():
+    # determinism (w20) PASS, exploits (w20) FAIL, distribution (w5) SKIP
+    sc = Scorecard("e", [
+        CheckResult("determinism", CheckStatus.PASS, "ok"),
+        CheckResult("exploits", CheckStatus.FAIL, "bad"),
+        CheckResult("distribution", CheckStatus.SKIP, "no gpu"),
+    ])
+    r = sc.rating
+    assert r["checks_rated"] == 2  # SKIP excluded
+    assert r["score"] == 50        # 20/(20+20)
+    assert r["letter"] == "D"      # 40-59 band
+
+
+def test_rating_none_when_all_skipped():
+    sc = Scorecard("e", [CheckResult("a", CheckStatus.SKIP, "n/a")])
+    assert sc.rating is None
+
+
+def test_recommendations_dedup_in_order():
+    sc = Scorecard("e", [
+        CheckResult("a", CheckStatus.FAIL, "x", details={"recommendations": ["fix A", "fix B"]}),
+        CheckResult("b", CheckStatus.WARN, "y", details={"recommendations": ["fix B", "fix C"]}),
+    ])
+    assert sc.recommendations() == ["fix A", "fix B", "fix C"]
+    assert sc.to_json()["recommendations"] == ["fix A", "fix B", "fix C"]

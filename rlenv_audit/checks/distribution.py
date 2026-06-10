@@ -134,6 +134,12 @@ def check_distribution(handle: EnvHandle, config: dict) -> CheckResult:
         warnings.append(f"empty response earns reward ({empty_reward})")
 
     if warnings:
+        details["recommendations"] = [
+            "Reward distribution is degenerate for the reference model "
+            f"({'; '.join(warnings)}). Adjust task difficulty so a mix of rollouts "
+            "pass and fail — an all-pass or all-fail batch gives zero gradient "
+            "(REWARD_DESIGN.md §difficulty-curriculum)."
+        ]
         return CheckResult(
             "distribution", CheckStatus.WARN,
             f"degenerate reward distribution: {'; '.join(warnings)} "

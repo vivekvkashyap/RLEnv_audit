@@ -34,7 +34,9 @@ def main() -> None:
 @click.option("--only", default=None, help="comma-separated checks to run (exclusively).")
 @click.option("--skip", default=None, help="comma-separated checks to exclude.")
 @click.option("--json", "json_path", default=None, help="also write the JSON report here.")
-@click.option("--model", default=None, help="reference model for the distribution check.")
+@click.option("--model", default=None, help="reference model for the distribution/rollouts checks.")
+@click.option("--endpoint", default=None, help="OpenAI-compatible base URL for the rollouts check (e.g. local vLLM).")
+@click.option("--api-key", default=None, help="API key for the rollouts check (else uses OPENAI_API_KEY).")
 @click.option(
     "--report/--no-report",
     default=True,
@@ -46,6 +48,8 @@ def run(
     skip: str | None,
     json_path: str | None,
     model: str | None,
+    endpoint: str | None,
+    api_key: str | None,
     report: bool,
 ) -> None:
     """Run the audit battery against ENV_ID and print a scorecard."""
@@ -53,6 +57,10 @@ def run(
     config: dict = {}
     if model:
         config["model"] = model
+    if endpoint:
+        config["endpoint"] = endpoint
+    if api_key:
+        config["api_key"] = api_key
 
     try:
         scorecard = audit(

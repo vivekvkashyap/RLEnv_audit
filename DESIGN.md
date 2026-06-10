@@ -117,25 +117,40 @@ Independence is a requirement: some need a GPU, some need Docker, so
 `--only exploits,contamination` and `--skip distribution` must work, and every
 failure mode degrades to a clean SKIP/FAIL result rather than crashing the run.
 
-## 7. The six checks (v0 scope — exactly these, no more)
+## 7. The eight checks
 
 1. **determinism** (no GPU) — score a fixed set of pre-generated completions 5×
    each; FAIL if any reward varies. Completions are derived from the dataset's
    own answers so the check works on any env.
-2. **exploits** (no GPU, **Docker-mandatory**) — submit known cheat patterns
+2. **reward_design** (no GPU) — probe the reward *shape* with a structured
+   battery (gold / wrong / empty / garbage) over several tasks: does correct
+   out-score garbage (discrimination), is there a constant baseline floor, is the
+   signal constant/binary/graded, are rewards bounded to [0,1], are the weights
+   sane. FAIL/WARN with a concrete recommendation per finding.
+3. **exploits** (no GPU, **Docker-mandatory**) — submit known cheat patterns
    instead of honest solutions (`sys.exit(0)`, monkeypatch `assert`, read the
    expected-output file, print the answer without computing, empty+success,
-   parser-format tricks); FAIL listing which cheats scored reward. Runs the
-   reward function inside a Docker sandbox because it executes hostile code.
-3. **distribution** (needs GPU → SKIP) — vLLM rollouts with a small reference
-   model, histogram the rewards; WARN on all-zero / all-one / empty-rewarded.
+   parser-format tricks); a cheat counts only if it clears a junk **baseline**;
+   FAIL listing which cleared it. Runs inside a Docker sandbox (hostile code).
 4. **parser** (no GPU) — feed correct answers in perturbed formats through the
    parser; score = fraction still extracted; WARN below threshold.
 5. **contamination** (no GPU) — n-gram overlap of dataset questions against
-   cached popular eval sets (AIME, MATH-500, GSM8K, HumanEval, LiveCodeBench);
-   FAIL listing matches. SKIP eval sets that can't be fetched offline.
-6. **latency** (no GPU) — time per verification call, cold vs warm, basic
+   cached popular eval sets (AIME, MATH-500, GSM8K, HumanEval, LiveCodeBench),
+   with document-frequency boilerplate filtering; FAIL listing matches.
+6. **rollouts** (needs a model endpoint → SKIP) — real mini-rollouts via any
+   OpenAI-compatible endpoint (OpenAI / local vLLM): generate, parse, score, and
+   check the pipeline works on real model text; WARN on zero-variance rewards or
+   a parser that extracts nothing from real output.
+7. **latency** (no GPU) — time per verification call, cold vs warm, basic
    parallelism; informational (PASS/WARN only).
+8. **distribution** (needs GPU → SKIP) — vLLM rollouts with a small reference
+   model, histogram the rewards; WARN on all-zero / all-one / empty-rewarded.
+
+**Scorecard layer.** Beyond per-check status, the report derives a weighted
+**0–100 rating (A–F)** over the checks that actually ran (SKIP excluded), and
+aggregates every check's **recommendations** — each citing a section of
+`REWARD_DESIGN.md` — into a "what to improve" list. That's what turns the audit
+from a pass/fail gate into actionable design feedback.
 
 ## 8. CLI surface
 
@@ -182,7 +197,9 @@ Honest limitations (each degrades to a clean SKIP, never a crash):
 
 ## 10. Honest scope statement
 
-v0 is **six checks, one format (`verifiers`), one command**. There is no plugin
+The tool now runs **eight checks** (the original six plus `reward_design` and
+`rollouts`) over **one format (`verifiers`)** through **one command**, and emits
+a rating + recommendations. There is no plugin
 system, no config-file framework, no multi-format support — on purpose. The
 `adapters/` and `checks/` seams make those *possible* later without building them
 now. Extension is a future concern; adoption cost is the present one.

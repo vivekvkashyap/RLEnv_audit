@@ -75,8 +75,10 @@ def main(argv):
         out = os.path.join(outdir, f"{name}.json")
         if os.path.exists(out):
             os.remove(out)
+        # Skip the hardware/endpoint-dependent checks so the batch stays CPU-only.
         code, so, se = run(
-            [audit, "run", name, "--skip", "distribution", "--json", out, "--no-report"],
+            [audit, "run", name, "--skip", "distribution,rollouts",
+             "--json", out, "--no-report"],
             AUDIT_TIMEOUT,
         )
         elapsed = round(time.time() - t0, 1)

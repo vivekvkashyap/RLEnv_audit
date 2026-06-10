@@ -160,6 +160,12 @@ def check_parser(handle: EnvHandle, config: dict) -> CheckResult:
     }
 
     if score < threshold:
+        details["recommendations"] = [
+            f"The parser drops correct answers under cosmetic reformatting "
+            f"({', '.join(weak)}). Normalize before matching — strip whitespace/"
+            "punctuation, match case-insensitively, take the last occurrence — so "
+            "correct rollouts aren't scored wrong (REWARD_DESIGN.md §parser-contract)."
+        ]
         return CheckResult(
             "parser", CheckStatus.WARN,
             f"parser handled {passed}/{total} perturbations ({score:.0%}); "

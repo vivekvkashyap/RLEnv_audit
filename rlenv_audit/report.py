@@ -34,6 +34,21 @@ _GRADE_STYLE: dict[str, str] = {
     "INCONCLUSIVE": "dim",
 }
 
+# Relative importance of each check for the 0-100 rating. SKIPped checks are
+# excluded from both numerator and denominator — an env is rated only on what
+# could actually be measured here. Unknown checks default to 5.
+_RATING_WEIGHTS: dict[str, int] = {
+    "determinism": 20,
+    "exploits": 20,
+    "reward_design": 20,
+    "rollouts": 10,
+    "parser": 10,
+    "contamination": 10,
+    "distribution": 5,
+    "latency": 5,
+}
+_STATUS_CREDIT = {CheckStatus.PASS: 1.0, CheckStatus.WARN: 0.5, CheckStatus.FAIL: 0.0}
+
 
 @dataclass
 class Scorecard:
@@ -65,13 +80,47 @@ class Scorecard:
             out[str(r.status)] = out.get(str(r.status), 0) + 1
         return out
 
+    @property
+    def rating(self) -> dict[str, Any] | None:
+        """Weighted 0-100 quality score + letter, over the checks that ran.
+
+        PASS earns full weight, WARN half, FAIL none; SKIP is excluded entirely
+        so an env isn't penalized for missing hardware. ``None`` when nothing
+        could be measured (all SKIP).
+        """
+        applicable = [r for r in self.results if r.status != CheckStatus.SKIP]
+        if not applicable:
+            return None
+        total = sum(_RATING_WEIGHTS.get(r.check_name, 5) for r in applicable)
+        earned = sum(
+            _RATING_WEIGHTS.get(r.check_name, 5) * _STATUS_CREDIT[r.status]
+            for r in applicable
+        )
+        score = round(100 * earned / total)
+        letter = ("A" if score >= 90 else "B" if score >= 75 else
+                  "C" if score >= 60 else "D" if score >= 40 else "F")
+        return {"score": score, "letter": letter, "checks_rated": len(applicable)}
+
+    def recommendations(self) -> list[str]:
+        """Every actionable recommendation the checks produced, deduped in order."""
+        seen: set[str] = set()
+        out: list[str] = []
+        for r in self.results:
+            for rec in r.details.get("recommendations", []) or []:
+                if rec not in seen:
+                    seen.add(rec)
+                    out.append(rec)
+        return out
+
     # ------------------------------------------------------------------ JSON
     def to_json(self) -> dict[str, Any]:
         """Full machine-readable report — carries every check's ``details``."""
         return {
             "env_id": self.env_id,
             "grade": self.grade,
+            "rating": self.rating,
             "counts": self.counts(),
+            "recommendations": self.recommendations(),
             "checks": [r.to_dict() for r in self.results],
         }
 
@@ -98,4 +147,17 @@ class Scorecard:
         counts = self.counts()
         tally = "  ".join(f"{k} {v}" for k, v in counts.items())
         grade = Text(self.grade, style=_GRADE_STYLE.get(self.grade, "bold"))
-        console.print(Text.assemble("overall grade: ", grade, f"   ({tally})"))
+        rating = self.rating
+        if rating is None:
+            rating_txt = "rating: N/A (nothing could be measured)"
+        else:
+            rating_txt = f"rating: {rating['letter']} ({rating['score']}/100)"
+        console.print(
+            Text.assemble("overall grade: ", grade, f"   {rating_txt}   ({tally})")
+        )
+
+        recs = self.recommendations()
+        if recs:
+            console.print("\n[bold]Recommendations[/bold] (what to improve before training on this env):")
+            for i, rec in enumerate(recs, 1):
+                console.print(f"  {i}. {rec}")

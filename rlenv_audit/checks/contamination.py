@@ -216,6 +216,12 @@ def check_contamination(handle: EnvHandle, config: dict) -> CheckResult:
         for m in matches:
             by_set[m["matched_set"]] = by_set.get(m["matched_set"], 0) + 1
         breakdown = ", ".join(f"{k}:{v}" for k, v in by_set.items())
+        details["recommendations"] = [
+            f"Dataset overlaps known eval sets ({breakdown}). If this is a TRAINING "
+            "env, remove the overlapping items so eval scores stay honest. If it's "
+            "an EVAL env, this is expected — just don't train on it "
+            "(REWARD_DESIGN.md §contamination)."
+        ]
         return CheckResult(
             "contamination", CheckStatus.FAIL,
             f"{len(matches)} dataset items overlap eval sets ({breakdown}); {avail_note}",

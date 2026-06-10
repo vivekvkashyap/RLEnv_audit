@@ -58,6 +58,7 @@ rlenv-audit run <env-id> --only determinism,parser
 rlenv-audit run <env-id> --skip distribution
 rlenv-audit run <env-id> --json out.json # also write JSON here
 rlenv-audit run <env-id> --model Qwen/Qwen2.5-1.5B-Instruct   # distribution model
+rlenv-audit run <env-id> --endpoint http://localhost:8000/v1 --model qwen  # rollouts check
 rlenv-audit list-checks                  # what each check needs
 ```
 
@@ -79,20 +80,26 @@ scorecard.write_json("report.json")
 scorecard = rlenv_audit.audit("gsm8k", only=["determinism", "parser"])
 ```
 
-## The six checks
+## The eight checks
 
 | Check | Needs | What it catches |
 | --- | --- | --- |
 | **determinism** | — | Scores a fixed set of completions 5× each; **FAIL** if any reward varies. Non-deterministic rewards inject noise into the gradient. |
-| **exploits** | Docker | Submits known cheats (`sys.exit(0)`, monkeypatch `assert`, read the expected-output file, empty solution) **instead of** real answers; **FAIL** if a no-solution cheat earns reward. Runs in a locked-down container because it executes hostile code. |
-| **distribution** | GPU | Rollouts with a small reference model; **WARN** on all-zero / all-one / empty-rewarded distributions — shapes that produce no learning signal. |
+| **reward_design** | — | Probes the reward shape: does correct out-score garbage, is there a flat baseline floor, is the signal constant/binary/graded, are rewards bounded, are weights sane. **FAIL/WARN** with concrete fixes. |
+| **exploits** | Docker | Submits known cheats (`sys.exit(0)`, monkeypatch `assert`, read the expected-output file, empty solution) **instead of** real answers; **FAIL** if a no-solution cheat earns reward above the junk baseline. Runs in a locked-down container because it executes hostile code. |
 | **parser** | — | Feeds the answer parser correct answers in perturbed formats (whitespace, `\boxed{}`, trailing punctuation, casing); score = fraction still extracted; **WARN** if brittle. |
 | **contamination** | — | N-gram overlap of the dataset against popular eval sets (GSM8K, MATH-500, AIME, HumanEval, LiveCodeBench); **FAIL** listing matches. |
+| **rollouts** | model endpoint | Runs real mini-rollouts via any OpenAI-compatible endpoint (OpenAI or a local vLLM), pushes them through the parser + reward, and checks the pipeline works on real model text. SKIPs with no endpoint. |
 | **latency** | — | Times verification cold vs warm and probes batched scoring. Informational. |
+| **distribution** | GPU | Rollouts with a small reference model; **WARN** on all-zero / all-one / empty-rewarded distributions — shapes that produce no learning signal. |
+
+Every failing check attaches a **recommendation** pointing at the relevant
+section of [`REWARD_DESIGN.md`](REWARD_DESIGN.md), so the scorecard tells you
+*what to fix*, not just that something's wrong.
 
 `SKIP` ≠ `FAIL`: a check SKIPs when it can't run here (no GPU, Docker down, no
-dataset). The overall grade is the worst meaningful result; all-SKIP is
-`INCONCLUSIVE`.
+endpoint, no dataset). The overall grade is the worst meaningful result; the
+**rating** is a weighted 0–100 score (A–F) over the checks that actually ran.
 
 ## How it works
 

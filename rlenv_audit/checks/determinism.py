@@ -102,6 +102,12 @@ def check_determinism(handle: EnvHandle, config: dict) -> CheckResult:
     }
 
     if nondeterministic:
+        details["recommendations"] = [
+            "Make the reward function deterministic: seed any RNG, avoid wall-clock "
+            "or network calls in scoring, and pin judge temperature to 0. A reward "
+            "that varies across identical re-scores injects pure noise into the "
+            "gradient (REWARD_DESIGN.md §determinism)."
+        ]
         return CheckResult(
             "determinism",
             CheckStatus.FAIL,
