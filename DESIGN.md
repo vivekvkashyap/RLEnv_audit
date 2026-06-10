@@ -64,10 +64,10 @@ API. The facts that shaped the design (all verified by reading
 ```
 verifiers concept      attacked by
 -------------------    ----------------------------------------
-rubric / reward fns →  determinism, exploits, distribution checks
+rubric / reward fns →  determinism, reward_design, exploits, distribution checks
 parser             →  parser-robustness check
 dataset            →  contamination check
-(whole pipeline)   →  latency check
+(whole pipeline)   →  integrity, rollouts, design_review checks
 ```
 
 ## 5. The adapter — `EnvHandle` (`adapters/verifiers.py`)
@@ -117,7 +117,7 @@ Independence is a requirement: some need a GPU, some need Docker, so
 `--only exploits,contamination` and `--skip distribution` must work, and every
 failure mode degrades to a clean SKIP/FAIL result rather than crashing the run.
 
-## 7. The ten checks
+## 7. The nine checks
 
 0. **integrity** (no GPU, runs first) — pure structural introspection that works
    on *any* env type, no scoring at all: reward functions present, dataset
@@ -155,9 +155,7 @@ failure mode degrades to a clean SKIP/FAIL result rather than crashing the run.
    the issues only reading the code reveals: swallowed exceptions that turn
    errors into a fixed reward, gameable judge prompts, fragile regexes,
    machine-dependent timeouts.
-8. **latency** (no GPU) — time per verification call, cold vs warm, basic
-   parallelism; informational (PASS/WARN only).
-9. **distribution** (needs GPU → SKIP) — vLLM rollouts with a small reference
+8. **distribution** (needs GPU → SKIP) — vLLM rollouts with a small reference
    model, histogram the rewards; WARN on all-zero / all-one / empty-rewarded.
 
 **Scorecard layer.** Beyond per-check status, the report derives a weighted
@@ -239,7 +237,7 @@ the generated inputs.
 
 ## 10. Honest scope statement
 
-The tool now runs **ten checks** (the original six plus `integrity`,
+The tool now runs **nine checks** (the original six plus `integrity`,
 `reward_design`, `rollouts`, `design_review`) over **one format (`verifiers`)**
 through **one command**, generating env-adaptive inputs via per-check skill files
 when a model endpoint is available, and emits a rating + recommendations. There

@@ -47,7 +47,6 @@ _RATING_WEIGHTS: dict[str, int] = {
     "parser": 10,
     "contamination": 10,
     "distribution": 5,
-    "latency": 5,
 }
 _STATUS_CREDIT = {CheckStatus.PASS: 1.0, CheckStatus.WARN: 0.5, CheckStatus.FAIL: 0.0}
 

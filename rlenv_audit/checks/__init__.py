@@ -30,7 +30,6 @@ def _load_builtin_checks() -> None:
         distribution,
         exploits,
         integrity,
-        latency,
         parser,
         reward_design,
         rollouts,
@@ -42,7 +41,6 @@ def _load_builtin_checks() -> None:
     register(exploits.SPEC)
     register(parser.SPEC)
     register(contamination.SPEC)
-    register(latency.SPEC)
     register(rollouts.SPEC)
     register(design_review.SPEC)
     register(distribution.SPEC)

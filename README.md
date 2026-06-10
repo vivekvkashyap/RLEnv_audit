@@ -31,10 +31,9 @@ $ rlenv-audit run gsm8k
 │ exploits      │ PASS   │ no hard cheats exploited                            │
 │ parser        │ PASS   │ parser handled 21/24 perturbations (88%)            │
 │ contamination │ PASS   │ no overlap found; checked 500 questions             │
-│ latency       │ PASS   │ cold 4ms, warm mean 4ms (~231/s), 2.0x batched      │
 │ rollouts      │ SKIP   │ no model endpoint configured                        │
 └───────────────┴────────┴─────────────────────────────────────────────────────┘
-overall grade: PASS   rating: A (100/100)   (PASS 6  SKIP 1)
+overall grade: PASS   rating: A (100/100)   (PASS 5  SKIP 1)
 
 Recommendations (what to improve before training on this env):
   1. Reward is strictly 0-or-1. That's valid, but graded partial credit usually
@@ -48,7 +47,7 @@ report written to: report.json
 ## Install
 
 RLEnv_audit pins **`verifiers==0.1.14`** on purpose — newer versions drag in
-torch/vLLM, and eight of the ten checks are CPU-only (the model-assisted two just need an API endpoint).
+torch/vLLM, and most of the nine checks run on CPU (the model-assisted ones just need an API endpoint).
 
 ```bash
 # with uv (recommended)
@@ -111,7 +110,7 @@ scorecard = rlenv_audit.audit("gsm8k", only=["determinism", "reward_design"])
 
 ---
 
-## The ten checks
+## The nine checks
 
 | Check | Needs | What it catches |
 | --- | --- | --- |
@@ -123,7 +122,6 @@ scorecard = rlenv_audit.audit("gsm8k", only=["determinism", "reward_design"])
 | **contamination** | — | N-gram overlap of the dataset against popular eval sets (GSM8K, MATH-500, AIME, HumanEval, LiveCodeBench), with boilerplate filtering; **FAIL** listing matches. |
 | **rollouts** | model endpoint | Real mini-rollouts via any OpenAI-compatible endpoint: generate → parse → score, checking the pipeline works on real model text; **WARN** on zero-variance reward or a parser that extracts nothing. |
 | **design_review** | model endpoint | Hands the env's *actual reward-function source code*, system prompt, and sample tasks to an LLM together with `REWARD_DESIGN.md`, and gets a structured expert review — the issues only reading the code reveals (swallowed exceptions, gameable judge prompts, fragile regexes). |
-| **latency** | — | Times verification cold vs warm and probes batched scoring. Informational. |
 | **distribution** | GPU | Rollouts with a small reference model; **WARN** on all-zero / all-one / empty-rewarded distributions — shapes that produce no learning signal. |
 
 `SKIP` ≠ `FAIL`. A check SKIPs when it can't run *here* (no GPU, Docker down, no
