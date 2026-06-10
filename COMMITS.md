@@ -9,13 +9,13 @@ proven.
   docker), `.gitignore`, README stub, empty package dirs, `DESIGN.md`,
   `COMMITS.md`. Dedicated venv (`uv`, py3.10); `verifiers==0.1.14` + editable
   install; `vf-install gsm8k -r` to get the reference env.
-- [ ] **2. feat(base+report): data model** — `checks/base.py` (`CheckStatus`,
+- [x] **2. feat(base+report): data model** — `checks/base.py` (`CheckStatus`,
   `CheckResult`), `report.py` (`Scorecard.to_terminal` / `to_json`).
-- [ ] **3. feat(adapter): verifiers EnvHandle** — load env; normalize
+- [x] **3. feat(adapter): verifiers EnvHandle** — load env; normalize
   RubricGroup-aware rubric / parser / dataset; synchronous `score()` over the
   async path; `teardown()`. Graceful load failures.
-- [ ] **4. feat(determinism) + CLI** — determinism check + `audit()` orchestrator
-  + `cli.py` (`run`, `list-checks`). **Milestone.**
+- [x] **4. feat(determinism) + CLI** — determinism check + `audit()` orchestrator
+  + `cli.py` (`run`, `list-checks`). **Milestone proven on gsm8k.**
 - [ ] **5. feat(sandbox+exploits)** — `sandbox.py` Docker isolation + exploits
   check running cheat patterns inside it; SKIP cleanly if Docker is down.
 - [ ] **6. feat(parser)** — parser-robustness check.
