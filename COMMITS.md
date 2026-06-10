@@ -16,7 +16,7 @@ proven.
   async path; `teardown()`. Graceful load failures.
 - [x] **4. feat(determinism) + CLI** — determinism check + `audit()` orchestrator
   + `cli.py` (`run`, `list-checks`). **Milestone proven on gsm8k.**
-- [ ] **5. feat(sandbox+exploits)** — `sandbox.py` Docker isolation + exploits
+- [x] **5. feat(sandbox+exploits)** — `sandbox.py` Docker isolation + exploits
   check running cheat patterns inside it; SKIP cleanly if Docker is down.
 - [ ] **6. feat(parser)** — parser-robustness check.
 - [ ] **7. feat(contamination)** — n-gram overlap vs cached eval sets.

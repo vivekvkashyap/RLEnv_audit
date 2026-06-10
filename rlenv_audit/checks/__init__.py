@@ -51,8 +51,10 @@ def _load_builtin_checks() -> None:
     its optional deps doesn't break the whole registry.
     """
     from rlenv_audit.checks import determinism  # noqa: F401
+    from rlenv_audit.checks import exploits  # noqa: F401
 
     register(determinism.SPEC)
+    register(exploits.SPEC)
 
 
 _load_builtin_checks()
