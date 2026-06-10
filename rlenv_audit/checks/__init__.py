@@ -1,41 +1,18 @@
 """The check registry.
 
 Each check is an independent function ``check_x(handle, config) -> CheckResult``.
-A ``CheckSpec`` pairs that function with metadata (what hardware it needs, a
-one-line description) so the CLI can list and filter checks, and so a check that
-needs a GPU or Docker is discoverable up front.
+A ``CheckSpec`` (defined in ``base.py``) pairs that function with metadata (what
+hardware/services it needs, a one-line description) so the CLI can list and
+filter checks.
 
 Checks register themselves by being imported here and added to ``REGISTRY``. The
-ordering of ``REGISTRY`` is the order checks run and appear in the scorecard.
+ordering of ``REGISTRY`` is the order checks run and appear in the scorecard:
+structural facts first, then the reward probes, then the model-assisted reviews.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Callable
-
-from rlenv_audit.checks.base import CheckResult
-
-# A check: (handle: EnvHandle, config: dict) -> CheckResult
-CheckFunc = Callable[..., CheckResult]
-
-
-@dataclass(frozen=True)
-class CheckSpec:
-    name: str
-    func: CheckFunc
-    description: str
-    needs_gpu: bool = False
-    needs_docker: bool = False
-
-    def needs(self) -> str:
-        reqs = []
-        if self.needs_gpu:
-            reqs.append("GPU")
-        if self.needs_docker:
-            reqs.append("Docker")
-        return ", ".join(reqs) if reqs else "—"
-
+from rlenv_audit.checks.base import CheckFunc, CheckSpec  # noqa: F401 (re-export)
 
 REGISTRY: dict[str, CheckSpec] = {}
 
@@ -45,20 +22,21 @@ def register(spec: CheckSpec) -> None:
 
 
 def _load_builtin_checks() -> None:
-    """Import built-in check modules so they register themselves.
+    """Import built-in check modules so they register themselves."""
+    from rlenv_audit.checks import (  # noqa: F401
+        contamination,
+        design_review,
+        determinism,
+        distribution,
+        exploits,
+        integrity,
+        latency,
+        parser,
+        reward_design,
+        rollouts,
+    )
 
-    Imported lazily (and tolerantly) so that a check module which can't import
-    its optional deps doesn't break the whole registry.
-    """
-    from rlenv_audit.checks import determinism  # noqa: F401
-    from rlenv_audit.checks import reward_design  # noqa: F401
-    from rlenv_audit.checks import exploits  # noqa: F401
-    from rlenv_audit.checks import parser  # noqa: F401
-    from rlenv_audit.checks import contamination  # noqa: F401
-    from rlenv_audit.checks import latency  # noqa: F401
-    from rlenv_audit.checks import rollouts  # noqa: F401
-    from rlenv_audit.checks import distribution  # noqa: F401
-
+    register(integrity.SPEC)
     register(determinism.SPEC)
     register(reward_design.SPEC)
     register(exploits.SPEC)
@@ -66,6 +44,7 @@ def _load_builtin_checks() -> None:
     register(contamination.SPEC)
     register(latency.SPEC)
     register(rollouts.SPEC)
+    register(design_review.SPEC)
     register(distribution.SPEC)
 
 

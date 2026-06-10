@@ -38,10 +38,12 @@ _GRADE_STYLE: dict[str, str] = {
 # excluded from both numerator and denominator — an env is rated only on what
 # could actually be measured here. Unknown checks default to 5.
 _RATING_WEIGHTS: dict[str, int] = {
+    "integrity": 10,
     "determinism": 20,
     "exploits": 20,
     "reward_design": 20,
     "rollouts": 10,
+    "design_review": 10,
     "parser": 10,
     "contamination": 10,
     "distribution": 5,

@@ -184,7 +184,7 @@ def check_rollouts(handle: EnvHandle, config: dict) -> CheckResult:
     )
 
 
-from rlenv_audit.checks import CheckSpec  # noqa: E402
+from rlenv_audit.checks.base import CheckSpec  # noqa: E402
 
 SPEC = CheckSpec(
     name="rollouts",
@@ -192,4 +192,5 @@ SPEC = CheckSpec(
     description="end-to-end mini-rollouts with a real model via an OpenAI-compatible endpoint",
     needs_gpu=False,
     needs_docker=False,
+    needs_model=True,
 )

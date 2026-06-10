@@ -48,7 +48,7 @@ report written to: report.json
 ## Install
 
 RLEnv_audit pins **`verifiers==0.1.14`** on purpose — newer versions drag in
-torch/vLLM, and seven of the eight checks are CPU-only.
+torch/vLLM, and eight of the ten checks are CPU-only (the model-assisted two just need an API endpoint).
 
 ```bash
 # with uv (recommended)
@@ -111,16 +111,18 @@ scorecard = rlenv_audit.audit("gsm8k", only=["determinism", "reward_design"])
 
 ---
 
-## The eight checks
+## The ten checks
 
 | Check | Needs | What it catches |
 | --- | --- | --- |
-| **determinism** | — | Scores fixed completions 5× each; **FAIL** if any reward varies. Non-determinism injects noise into the gradient. |
+| **integrity** | — | Structural soundness, works on *any* env: reward functions present, dataset non-empty, answers populated, duplicate tasks, well-formed prompts, system prompt present. Pure introspection — no scoring. |
+| **determinism** | — | Scores fixed completions 5× each (incl. the env's own answer format); **FAIL** if any reward varies. Non-determinism injects noise into the gradient. |
 | **reward_design** | — | Probes the reward *shape* (gold / wrong / empty / garbage over several tasks): does correct out-score garbage, is there a flat baseline floor, is the signal constant/binary/graded, are rewards bounded to [0,1], are the weights sane. **FAIL/WARN** with concrete fixes. |
 | **exploits** | Docker | Submits known cheats (`sys.exit(0)`, monkeypatch `assert`, read the expected-output file, empty solution) *instead of* real answers; **FAIL** if a no-solution cheat earns reward above a junk baseline. Runs in a locked-down container — it executes hostile code. |
 | **parser** | — | Feeds correct answers in perturbed formats (whitespace, `\boxed{}`, punctuation, casing); score = fraction still extracted; **WARN** if brittle. |
 | **contamination** | — | N-gram overlap of the dataset against popular eval sets (GSM8K, MATH-500, AIME, HumanEval, LiveCodeBench), with boilerplate filtering; **FAIL** listing matches. |
 | **rollouts** | model endpoint | Real mini-rollouts via any OpenAI-compatible endpoint: generate → parse → score, checking the pipeline works on real model text; **WARN** on zero-variance reward or a parser that extracts nothing. |
+| **design_review** | model endpoint | Hands the env's *actual reward-function source code*, system prompt, and sample tasks to an LLM together with `REWARD_DESIGN.md`, and gets a structured expert review — the issues only reading the code reveals (swallowed exceptions, gameable judge prompts, fragile regexes). |
 | **latency** | — | Times verification cold vs warm and probes batched scoring. Informational. |
 | **distribution** | GPU | Rollouts with a small reference model; **WARN** on all-zero / all-one / empty-rewarded distributions — shapes that produce no learning signal. |
 

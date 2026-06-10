@@ -117,11 +117,16 @@ Independence is a requirement: some need a GPU, some need Docker, so
 `--only exploits,contamination` and `--skip distribution` must work, and every
 failure mode degrades to a clean SKIP/FAIL result rather than crashing the run.
 
-## 7. The eight checks
+## 7. The ten checks
 
+0. **integrity** (no GPU, runs first) — pure structural introspection that works
+   on *any* env type, no scoring at all: reward functions present, dataset
+   non-empty, answers populated, duplicate (question+answer) tasks, well-formed
+   chat prompts, system prompt present.
 1. **determinism** (no GPU) — score a fixed set of pre-generated completions 5×
    each; FAIL if any reward varies. Completions are derived from the dataset's
-   own answers so the check works on any env.
+   own answers (including the parser's own canonical format) so the check works
+   on any env.
 2. **reward_design** (no GPU) — probe the reward *shape* with a structured
    battery (gold / wrong / empty / garbage) over several tasks: does correct
    out-score garbage (discrimination), is there a constant baseline floor, is the
@@ -141,9 +146,16 @@ failure mode degrades to a clean SKIP/FAIL result rather than crashing the run.
    OpenAI-compatible endpoint (OpenAI / local vLLM): generate, parse, score, and
    check the pipeline works on real model text; WARN on zero-variance rewards or
    a parser that extracts nothing from real output.
-7. **latency** (no GPU) — time per verification call, cold vs warm, basic
+7. **design_review** (needs a model endpoint → SKIP) — hands the env's actual
+   reward-function *source code* (via `inspect.getsource`), system prompt,
+   parser type, and sample tasks to an LLM together with the REWARD_DESIGN.md
+   guide, and asks for a structured JSON review (severity / finding / fix) of
+   the issues only reading the code reveals: swallowed exceptions that turn
+   errors into a fixed reward, gameable judge prompts, fragile regexes,
+   machine-dependent timeouts.
+8. **latency** (no GPU) — time per verification call, cold vs warm, basic
    parallelism; informational (PASS/WARN only).
-8. **distribution** (needs GPU → SKIP) — vLLM rollouts with a small reference
+9. **distribution** (needs GPU → SKIP) — vLLM rollouts with a small reference
    model, histogram the rewards; WARN on all-zero / all-one / empty-rewarded.
 
 **Scorecard layer.** Beyond per-check status, the report derives a weighted
@@ -197,7 +209,7 @@ Honest limitations (each degrades to a clean SKIP, never a crash):
 
 ## 10. Honest scope statement
 
-The tool now runs **eight checks** (the original six plus `reward_design` and
+The tool now runs **ten checks** (the original six plus `integrity`, `reward_design`,
 `rollouts`) over **one format (`verifiers`)** through **one command**, and emits
 a rating + recommendations. There is no plugin
 system, no config-file framework, no multi-format support — on purpose. The

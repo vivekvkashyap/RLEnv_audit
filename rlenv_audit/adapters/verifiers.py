@@ -106,6 +106,48 @@ class EnvHandle:
                 pass
         return None
 
+    def reward_sources(self, max_chars_per_func: int = 4000) -> dict[str, str]:
+        """Source code of each reward function, best-effort (RubricGroup-aware).
+
+        Used by the design_review check to let a model read what the verifier
+        actually does. Functions whose source can't be retrieved (C extensions,
+        lambdas defined interactively) are reported as unavailable rather than
+        skipped silently.
+        """
+        import inspect
+        import textwrap
+
+        sources: dict[str, str] = {}
+        if self.rubric is None:
+            return sources
+        try:
+            funcs = self.rubric._get_reward_funcs()
+        except Exception:
+            funcs = list(getattr(self.rubric, "funcs", []))
+        for func in funcs:
+            name = getattr(func, "__name__", repr(func))
+            try:
+                src = textwrap.dedent(inspect.getsource(func))
+                if len(src) > max_chars_per_func:
+                    src = src[:max_chars_per_func] + "\n# ... truncated ..."
+                sources[name] = src
+            except Exception:
+                sources[name] = "<source unavailable>"
+        return sources
+
+    def system_prompt(self) -> str | None:
+        """The env's system prompt, from the env itself or the first dataset row."""
+        sp = getattr(self.env, "system_prompt", None)
+        if isinstance(sp, str) and sp.strip():
+            return sp
+        rows = self.dataset(n=1)
+        if rows and isinstance(rows[0].get("prompt"), list):
+            for msg in rows[0]["prompt"]:
+                if isinstance(msg, dict) and msg.get("role") == "system":
+                    content = msg.get("content")
+                    return content if isinstance(content, str) else None
+        return None
+
     # Dataset columns that verifiers already treats specially; everything else
     # in a row is exposed to reward functions as a named argument.
     _RESERVED_COLS = {"prompt", "answer", "info", "example_id"}

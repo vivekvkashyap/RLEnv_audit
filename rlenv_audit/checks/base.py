@@ -61,6 +61,33 @@ class CheckResult:
         }
 
 
+# A check: (handle: EnvHandle, config: dict) -> CheckResult
+CheckFunc = Callable[..., CheckResult]
+
+
+@dataclass(frozen=True)
+class CheckSpec:
+    """A registered check: the function plus metadata the CLI needs to list and
+    filter it (what hardware/services it requires, a one-line description)."""
+
+    name: str
+    func: CheckFunc
+    description: str
+    needs_gpu: bool = False
+    needs_docker: bool = False
+    needs_model: bool = False
+
+    def needs(self) -> str:
+        reqs = []
+        if self.needs_gpu:
+            reqs.append("GPU")
+        if self.needs_docker:
+            reqs.append("Docker")
+        if self.needs_model:
+            reqs.append("model endpoint")
+        return ", ".join(reqs) if reqs else "—"
+
+
 def timed(
     check_name: str,
     body: Callable[[], CheckResult],

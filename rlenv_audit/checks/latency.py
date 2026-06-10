@@ -131,7 +131,7 @@ def check_latency(handle: EnvHandle, config: dict) -> CheckResult:
     return CheckResult("latency", CheckStatus.PASS, summary, score=mean, details=details)
 
 
-from rlenv_audit.checks import CheckSpec  # noqa: E402
+from rlenv_audit.checks.base import CheckSpec  # noqa: E402
 
 SPEC = CheckSpec(
     name="latency",

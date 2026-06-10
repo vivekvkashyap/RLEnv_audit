@@ -234,7 +234,7 @@ def check_contamination(handle: EnvHandle, config: dict) -> CheckResult:
     )
 
 
-from rlenv_audit.checks import CheckSpec  # noqa: E402
+from rlenv_audit.checks.base import CheckSpec  # noqa: E402
 
 SPEC = CheckSpec(
     name="contamination",

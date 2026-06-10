@@ -18,20 +18,27 @@ from rlenv_audit.checks.base import CheckResult, CheckStatus
 _EPSILON = 1e-9
 
 
-def _completions_for(answer: str) -> list[tuple[str, str]]:
+def _completions_for(handle: EnvHandle, answer: str) -> list[tuple[str, str]]:
     """A fixed battery of (label, completion-text) for one task.
 
     Spans the reward function's branches: a plausibly-correct answer (exercises
     the reward-awarding path), a clearly-wrong one, and an empty completion. We
     only care that each is scored *consistently*, not whether it's correct.
+    The gold completion is also rendered in the env's own answer format when the
+    parser can produce one, so the reward-awarding branch is exercised on any
+    env type (XML tags, hashes, …), not just boxed-math.
     """
     ans = str(answer)
-    return [
+    battery = [
         ("gold_boxed", f"The answer is \\boxed{{{ans}}}"),
         ("gold_plain", f"The final answer is {ans}."),
         ("wrong", "The answer is \\boxed{-999999}"),
         ("empty", ""),
     ]
+    canonical = handle.canonical_answer(ans)
+    if canonical:
+        battery.insert(0, ("gold_canonical", canonical))
+    return battery
 
 
 def check_determinism(handle: EnvHandle, config: dict) -> CheckResult:
@@ -53,7 +60,7 @@ def check_determinism(handle: EnvHandle, config: dict) -> CheckResult:
     for i, row in enumerate(rows):
         prompt, answer, info = row["prompt"], row["answer"], row["info"]
         cols = row.get("raw", {})
-        for label, text in _completions_for(answer):
+        for label, text in _completions_for(handle, answer):
             rewards: list[float] = []
             try:
                 for _ in range(repeats):
@@ -125,7 +132,7 @@ def check_determinism(handle: EnvHandle, config: dict) -> CheckResult:
     )
 
 
-from rlenv_audit.checks import CheckSpec  # noqa: E402  (avoid circular import at top)
+from rlenv_audit.checks.base import CheckSpec  # noqa: E402
 
 SPEC = CheckSpec(
     name="determinism",
