@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rlenv-audit"
+version = "0.1.0"
+description = "pytest for RL environments — a quality-CI auditor for Prime Intellect `verifiers` environments"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Vivek", email = "vivekvkashyap10@gmail.com" }]
+keywords = ["rl", "reinforcement-learning", "verifiers", "prime-intellect", "audit", "reward-hacking"]
+
+dependencies = [
+    # Pinned: old/fragile CUDA on the target box — do NOT bump (would pull a newer
+    # verifiers that drags torch/vLLM). 5 of 6 checks need only the verifiers core.
+    "verifiers==0.1.14",
+    "click>=8.1",
+    "rich>=13.0",
+    "docker>=7.0",
+]
+
+[project.optional-dependencies]
+# The distribution check needs a GPU + vLLM. Kept optional so the core install
+# stays CPU-only. `pip install rlenv-audit[gpu]` to enable it.
+gpu = ["vllm"]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+rlenv-audit = "rlenv_audit.cli:main"
+
+[project.urls]
+Repository = "https://github.com/vivekvkashyap/RLEnv_audit"
+
+[tool.hatch.build.targets.wheel]
+packages = ["rlenv_audit"]

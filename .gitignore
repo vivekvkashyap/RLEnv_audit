@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Tooling / caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# RLEnv_audit local cache (downloaded eval sets for the contamination check)
+.rlenv_audit_cache/
+
+# Reports written during runs
+report.json
+*.report.json
+
+# OS
+.DS_Store
