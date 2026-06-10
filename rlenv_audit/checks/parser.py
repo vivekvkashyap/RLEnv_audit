@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from rlenv_audit.adapters.verifiers import EnvHandle
 from rlenv_audit.checks.base import CheckResult, CheckStatus
+from rlenv_audit.skills import run_skill
 
 # Below this fraction of perturbations handled, the parser is flagged brittle.
 _WARN_THRESHOLD = 0.8
@@ -85,6 +86,20 @@ def check_parser(handle: EnvHandle, config: dict) -> CheckResult:
             "not the parser) — nothing parser-specific to perturb",
         )
 
+    # Model-generated, env-specific format variants of the gold answer (when an
+    # endpoint is configured) — real ways a model might present the same correct
+    # answer, beyond the universal whitespace/casing perturbations below.
+    skill = run_skill(handle, config, "parser", rows)
+    model_variants: dict[int, list[dict]] = {}
+    for v in (skill or {}).get("variants", []) or []:
+        if not isinstance(v, dict) or not isinstance(v.get("text"), str):
+            continue
+        try:
+            ti = max(0, min(int(v.get("task_index", 0)), len(rows) - 1))
+        except (TypeError, ValueError):
+            ti = 0
+        model_variants.setdefault(ti, []).append(v)
+
     per_perturbation_pass: dict[str, int] = {}
     per_perturbation_total: dict[str, int] = {}
     findings: list[dict] = []
@@ -116,7 +131,12 @@ def check_parser(handle: EnvHandle, config: dict) -> CheckResult:
             continue
 
         rows_tested += 1
-        for label, text in _perturbations(canonical, ans):
+        perturbations = _perturbations(canonical, ans)
+        perturbations += [
+            (f"model:{v.get('label', j)}", v["text"])
+            for j, v in enumerate(model_variants.get(i, []))
+        ]
+        for label, text in perturbations:
             try:
                 got = parser.parse_answer(_as_completion(text))
                 ok = _norm(got) == ans

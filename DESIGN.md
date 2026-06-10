@@ -123,12 +123,14 @@ failure mode degrades to a clean SKIP/FAIL result rather than crashing the run.
    on *any* env type, no scoring at all: reward functions present, dataset
    non-empty, answers populated, duplicate (question+answer) tasks, well-formed
    chat prompts, system prompt present.
-1. **determinism** (no GPU) — score a fixed set of pre-generated completions 5×
-   each; FAIL if any reward varies. Completions are derived from the dataset's
-   own answers (including the parser's own canonical format) so the check works
-   on any env.
-2. **reward_design** (no GPU) — probe the reward *shape* with a structured
-   battery (gold / wrong / empty / garbage) over several tasks: does correct
+1. **determinism** (needs a model endpoint → SKIP) — a model following
+   `skills/determinism.md` reads the env and writes ~20 diverse probe
+   completions (gold / rewritten gold / wrong / edge cases) **in the env's own
+   answer format**; each is scored 5× and FAIL if any reward varies. No static
+   battery — the probes adapt to any env type (code, SQL, JSON, games).
+2. **reward_design** (weight check no-model; shape probing needs an endpoint) —
+   probe the reward *shape* with model-written gold / partial / wrong / garbage
+   completions over several tasks: does correct
    out-score garbage (discrimination), is there a constant baseline floor, is the
    signal constant/binary/graded, are rewards bounded to [0,1], are the weights
    sane. FAIL/WARN with a concrete recommendation per finding.
@@ -207,11 +209,41 @@ Honest limitations (each degrades to a clean SKIP, never a crash):
   `verifiers==0.1.14` and won't install (e.g. `math_python`); those can't be
   audited under this pin.
 
+## 9b. Skill-file-driven input generation (`skills.py`, `skills/`)
+
+Checks that need *inputs* shaped like the env under test (probes, cheats, format
+variants) can't use a static battery — a `\boxed{}` template fits math/QA and
+nothing else. Each such check ships a **skill file** `skills/<check>.md`: a prompt
+that tells a model how to read this env and write the inputs that check needs.
+
+`skills.run_skill(handle, config, name, rows)` loads the skill, appends a
+structured env description (system prompt, parser, sample tasks + gold answers,
+reward functions, and — for exploits — the reward source via
+`EnvHandle.reward_sources()`), calls the configured OpenAI-compatible endpoint,
+and parses the model's JSON back. Results are cached per skill name in `config`
+so a skill runs at most once per audit. No endpoint / bad output → `None`, and
+the check SKIPs.
+
+| Skill | Used by | Generates |
+| --- | --- | --- |
+| `determinism.md` | determinism | ~20 gold / rewritten / wrong / edge probes |
+| `reward_design.md` | reward_design | gold / partial / wrong / garbage completions |
+| `exploits.md` | exploits | env-specific cheats (+ the universal battery) |
+| `parser.md` | parser | realistic format variants of the correct answer |
+
+This is the "user has Claude Code / Codex" path: point the audit at any model
+endpoint and every skill-driven check writes the inputs tailored to *that*
+environment. determinism and reward_design have no static fallback (SKIP without
+an endpoint); exploits and parser keep their universal batteries and only *add*
+the generated inputs.
+
 ## 10. Honest scope statement
 
-The tool now runs **ten checks** (the original six plus `integrity`, `reward_design`,
-`rollouts`) over **one format (`verifiers`)** through **one command**, and emits
-a rating + recommendations. There is no plugin
+The tool now runs **ten checks** (the original six plus `integrity`,
+`reward_design`, `rollouts`, `design_review`) over **one format (`verifiers`)**
+through **one command**, generating env-adaptive inputs via per-check skill files
+when a model endpoint is available, and emits a rating + recommendations. There
+is no plugin
 system, no config-file framework, no multi-format support — on purpose. The
 `adapters/` and `checks/` seams make those *possible* later without building them
 now. Extension is a future concern; adoption cost is the present one.

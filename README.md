@@ -116,8 +116,8 @@ scorecard = rlenv_audit.audit("gsm8k", only=["determinism", "reward_design"])
 | Check | Needs | What it catches |
 | --- | --- | --- |
 | **integrity** | — | Structural soundness, works on *any* env: reward functions present, dataset non-empty, answers populated, duplicate tasks, well-formed prompts, system prompt present. Pure introspection — no scoring. |
-| **determinism** | — | Scores fixed completions 5× each (incl. the env's own answer format); **FAIL** if any reward varies. Non-determinism injects noise into the gradient. |
-| **reward_design** | — | Probes the reward *shape* (gold / wrong / empty / garbage over several tasks): does correct out-score garbage, is there a flat baseline floor, is the signal constant/binary/graded, are rewards bounded to [0,1], are the weights sane. **FAIL/WARN** with concrete fixes. |
+| **determinism** | model endpoint | A model writes ~20 diverse probes (gold / rewritten / wrong / edge) *in this env's own answer format*; each is scored 5×; **FAIL** if any reward varies. Non-determinism injects noise into the gradient. |
+| **reward_design** | model endpoint | A model writes gold / partial / wrong / garbage completions; checks does correct out-score garbage, flat baseline floor, constant/binary/graded signal, bounds in [0,1], sane weights (the weight check runs without a model). **FAIL/WARN** with concrete fixes. |
 | **exploits** | Docker | Submits known cheats (`sys.exit(0)`, monkeypatch `assert`, read the expected-output file, empty solution) *instead of* real answers; **FAIL** if a no-solution cheat earns reward above a junk baseline. Runs in a locked-down container — it executes hostile code. |
 | **parser** | — | Feeds correct answers in perturbed formats (whitespace, `\boxed{}`, punctuation, casing); score = fraction still extracted; **WARN** if brittle. |
 | **contamination** | — | N-gram overlap of the dataset against popular eval sets (GSM8K, MATH-500, AIME, HumanEval, LiveCodeBench), with boilerplate filtering; **FAIL** listing matches. |
@@ -129,13 +129,26 @@ scorecard = rlenv_audit.audit("gsm8k", only=["determinism", "reward_design"])
 `SKIP` ≠ `FAIL`. A check SKIPs when it can't run *here* (no GPU, Docker down, no
 endpoint, no dataset) — it is never counted against the environment.
 
-> **Model-generated probes.** With an endpoint configured, determinism and
-> reward_design additionally use probe completions *written by a model that has
-> read this env's system prompt and tasks* — so the reward-awarding branch is
-> exercised on envs whose answers aren't math-shaped (code, SQL, JSON, games).
-> Generated golds are round-trip validated through the env's parser, and the
-> battery is generated once per audit and shared across checks. Without an
-> endpoint the static battery is used; behavior is unchanged.
+### Skill-file-driven probes
+
+Several checks need *inputs* shaped like the environment under test — and a
+static, hand-written battery only fits math/QA envs. So each such check ships a
+**skill file** (`rlenv_audit/skills/<check>.md`): a prompt telling a model how to
+read this specific env (system prompt, parser, sample tasks + gold answers,
+reward source) and write the inputs that check needs:
+
+| Check | Skill generates |
+| --- | --- |
+| determinism | ~20 diverse probes (gold / rewritten / wrong / edge) in the env's format |
+| reward_design | gold / partial / wrong / garbage completions to measure reward shape |
+| exploits | env-specific cheat completions (alongside the universal security battery) |
+| parser | realistic format variants of the correct answer |
+
+Point the audit at any OpenAI-compatible endpoint (OpenAI, a local vLLM, or a
+Claude-compatible proxy) with `--endpoint` / `OPENAI_API_KEY`, and these checks
+generate exactly the inputs they need for *your* env. **No endpoint → determinism
+and reward_design SKIP** (there is no static fallback, by design); exploits and
+parser still run their universal batteries.
 
 ## Rating & recommendations
 

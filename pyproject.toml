@@ -35,3 +35,5 @@ Repository = "https://github.com/vivekvkashyap/RLEnv_audit"
 
 [tool.hatch.build.targets.wheel]
 packages = ["rlenv_audit"]
+# Ship the skill prompt files alongside the package.
+include = ["rlenv_audit/skills/*.md"]
