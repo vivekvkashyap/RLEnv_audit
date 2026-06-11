@@ -38,22 +38,31 @@ def test_score_discriminates():
 
 def test_build_scorecard_excludes_na_from_rating():
     card = build_scorecard({"env_id": "e", "checks": [
-        {"name": "integrity", "status": "PASS", "score": 90, "justification": "x"},
-        {"name": "reward_design", "status": "WARN", "score": 60, "justification": "y"},
+        {"name": "integrity", "status": "PASS", "score": 9, "justification": "x"},
+        {"name": "reward_design", "status": "WARN", "score": 6, "justification": "y"},
         {"name": "latency", "status": "N/A", "score": None, "justification": "no endpoint"},
     ]})
-    assert card["rating"] == 75          # (90 + 60) / 2, N/A excluded
+    assert card["rating"] == 7.5         # (9 + 6) / 2, N/A excluded
     assert card["letter"] == "B"
     assert card["grade"] == "WARN"
+
+
+def test_build_scorecard_weights_latency_and_contamination_half():
+    card = build_scorecard({"env_id": "e", "checks": [
+        {"name": "integrity", "status": "PASS", "score": 10, "justification": "x"},
+        {"name": "contamination", "status": "FAIL", "score": 2, "justification": "y"},
+    ]})
+    assert card["rating"] == 7.3         # (10*1 + 2*0.5) / 1.5
 
 
 def test_build_scorecard_error_grades_fail():
     card = build_scorecard({"env_id": "e", "checks": [
         {"name": "integrity", "status": "ERROR", "score": None, "justification": "crashed"},
-        {"name": "contamination", "status": "PASS", "score": 100, "justification": "clean"},
-    ]})
+        {"name": "contamination", "status": "PASS", "score": 10, "justification": "clean"},
+    ], "feedback": "fine env, scoring crashed"})
     assert card["grade"] == "FAIL"
-    assert card["rating"] == 100         # only the check that produced a score
+    assert card["rating"] == 10          # only the check that produced a score
+    assert card["feedback"] == "fine env, scoring crashed"
 
 
 def test_install_skills_copies_bundled_skills(tmp_path):

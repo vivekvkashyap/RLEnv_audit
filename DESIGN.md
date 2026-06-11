@@ -81,7 +81,8 @@ Four commands, each JSON-in/JSON-out:
   generates 8 rollouts over ~20 tasks **once**, scores + times them, caches to
   JSON. Checks 4 and 5 share this single cache.
 - `rlenv-audit scorecard results.json` → computes the overall grade + rating
-  (average of the checks that ran; N/A excluded) and renders the table.
+  (weighted average out of 10 over the checks that ran; N/A excluded) and
+  renders the table + feedback.
 
 ## 6. The six checks (`skills/`)
 
@@ -107,13 +108,17 @@ and assembles the scorecard.
 
 ## 7. Scoring model
 
-Each check returns `{name, status, score (0–100|null), justification}`.
+Each check returns `{name, status, score (0–10|null), justification}`; the
+results object also carries a written `feedback` field (1–3 paragraphs: what the
+env does right, then what to improve, in priority order).
 
-- **status**: PASS (~75–100) / WARN (~40–74) / FAIL (~0–39) / **N/A** (documented
-  skip: no endpoint).
-- **rating**: the mean of the numeric scores over checks that actually ran (N/A
-  excluded), mapped to an A–F letter.
-- **grade**: the worst meaningful status (any FAIL → FAIL).
+- **status**: PASS (~7.5–10) / WARN (~4–7.4) / FAIL (~0–3.9) / **N/A**
+  (documented skip: no endpoint).
+- **rating**: a weighted average out of 10 over the checks that actually ran
+  (N/A excluded). Latency (informational) and contamination (often expected for
+  eval-style envs) weigh 0.5; the other four checks weigh 1.0. Mapped to an A–F
+  letter (A ≥ 9, B ≥ 7.5, C ≥ 6, D ≥ 4).
+- **grade**: the worst meaningful status (any FAIL/ERROR → FAIL).
 
 Every score must be grounded in observed evidence — tool output, completions the
 agent wrote, rollouts it read — never a vibe. `REWARD_DESIGN.md` is the rubric the

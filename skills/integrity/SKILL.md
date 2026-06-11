@@ -13,7 +13,7 @@ This check needs no model. Use the `inspect` tool plus reading the source.
 
 1. **Load.** Read `/tmp/envaudit_inspect.json` if the orchestrator already wrote
    it; otherwise run `rlenv-audit inspect <env> -n 20 --out /tmp/envaudit_inspect.json`.
-   If `loaded` is false → **FAIL**, score ≤ 20, justification = the `error`.
+   If `loaded` is false → **FAIL**, score ≤ 2, justification = the `error`.
    Stop here.
 
 2. **Dataset well-formed.** From the JSON, check:
@@ -38,7 +38,7 @@ This check needs no model. Use the `inspect` tool plus reading the source.
 
 ## Output
 
-Score 0–100: start at 100 and deduct for each defect by severity (won't load →
+Score 0–10: start at 10 and deduct for each defect by severity (won't load →
 fail outright; missing reward / empty dataset → large deduction; no system
 prompt / minor convention slips → small). Return:
 

@@ -31,7 +31,7 @@ needs no model — only your judgement over the env.
 
 ## Output
 
-Score 0–100 for how well the env tests the stated problem:
+Score 0–10 for how well the env tests the stated problem:
 
 ```json
 {"name": "problem_alignment", "status": "PASS|WARN|FAIL", "score": <int>,

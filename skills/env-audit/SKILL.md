@@ -9,7 +9,7 @@ You are auditing one RL environment built on the `verifiers` framework (the Prim
 Intellect Environments Hub standard). The audit is **six checks**, each its own
 skill under `skills/`. Each check is judgment-heavy — you perform it yourself
 using your own reasoning plus the deterministic `rlenv-audit` tools — and returns
-a **score (0–100), a status, and a one-line justification**.
+a **score (0–10), a status, and a one-line justification**.
 
 ## 0. Gather inputs
 
@@ -71,24 +71,31 @@ If the user gave an endpoint (or chose "dummy"):
 
 If there is no endpoint, mark **latency** and **rollout_quality** as `N/A`.
 
-## 5. Assemble the scorecard
+## 5. Assemble the scorecard + feedback
 
-Write all six results to `/tmp/envaudit_results.json`:
+Each check scores **0–10** (one decimal allowed). Write all six results, plus a
+written **feedback** section, to `/tmp/envaudit_results.json`:
 
 ```json
 {"env_id": "<env>", "checks": [
-  {"name": "integrity", "status": "PASS|WARN|FAIL", "score": 0-100, "justification": "..."},
-  {"name": "problem_alignment", "status": "PASS|WARN|FAIL", "score": 0-100, "justification": "..."},
+  {"name": "integrity", "status": "PASS|WARN|FAIL", "score": 0-10, "justification": "..."},
+  {"name": "problem_alignment", "status": "PASS|WARN|FAIL", "score": 0-10, "justification": "..."},
   {"name": "reward_design", "status": "...", "score": ..., "justification": "..."},
   {"name": "latency", "status": "PASS|WARN|N/A", "score": ...|null, "justification": "..."},
   {"name": "rollout_quality", "status": "...", "score": ..., "justification": "..."},
   {"name": "contamination", "status": "PASS|WARN|FAIL", "score": ..., "justification": "..."}
-]}
+], "feedback": "<1-3 paragraphs>"}
 ```
 
-Then `rlenv-audit scorecard /tmp/envaudit_results.json` to render it. The overall
-rating averages the checks that actually ran (N/A excluded). Finally, give the
-user a short prose summary: the grade, the biggest issue, and what to fix first.
+**feedback** is 1–3 short paragraphs for the env author: first what the
+environment does *right* (be specific — cite what you observed), then what can
+be improved and how, in priority order. This is the part a human acts on; make
+every sentence earn its place.
+
+Then `rlenv-audit scorecard /tmp/envaudit_results.json` to render it. The final
+rating is a **weighted average out of 10** over the checks that ran (N/A
+excluded): latency and contamination weigh 0.5, the other four checks 1.0 — the
+tool computes this for you.
 
 ## Rules
 
@@ -96,5 +103,5 @@ user a short prose summary: the grade, the biggest issue, and what to fix first.
   check just because it's hard.
 - Every score needs a justification grounded in what you actually observed
   (tool output, completions you wrote, rollouts you read) — never a vibe.
-- Statuses: **PASS** ≈ 75–100, **WARN** ≈ 40–74, **FAIL** ≈ 0–39 (use judgement
+- Statuses: **PASS** ≈ 7.5–10, **WARN** ≈ 4–7.4, **FAIL** ≈ 0–3.9 (use judgement
   at the edges). Be honest; the point is to catch faults before a training run.

@@ -39,7 +39,7 @@ No model needed — your judgement plus the dataset.
 
 ## Output
 
-Score 0–100 where 100 = clean, lower = more overlap:
+Score 0–10 where 10 = clean, lower = more overlap:
 
 ```json
 {"name": "contamination", "status": "PASS|WARN|FAIL", "score": <int>,

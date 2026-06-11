@@ -41,7 +41,7 @@ up well — or is the setup itself causing failures?
 
 ## Output
 
-Score 0–100 for how well the env works in practice with a real model:
+Score 0–10 for how well the env works in practice with a real model:
 
 ```json
 {"name": "rollout_quality", "status": "PASS|WARN|FAIL", "score": <int>,

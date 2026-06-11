@@ -45,7 +45,7 @@ them through the real reward function.
 
 ## Output
 
-Combine the two into a 0–100 score (roughly: half variance/discrimination, half
+Combine the two into a 0–10 score (roughly: half variance/discrimination, half
 judgment agreement). A constant reward, or correct answers not out-scoring
 garbage, is a **FAIL**.
 

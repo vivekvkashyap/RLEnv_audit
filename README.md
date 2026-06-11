@@ -11,7 +11,8 @@ tests them first — a broken reward function doesn't crash, it silently teaches
 the policy garbage. env_audit catches that: point an agent (Claude Code / Codex)
 at an environment and it runs **six judgment-based checks** — each a skill file
 the agent executes, backed by a small deterministic tool layer — and returns a
-scorecard with a score (0–100), a status, and a written justification per check.
+scorecard with a score out of 10, a status, and a written justification per
+check, plus overall feedback on what the env does right and what to improve.
 
 ## Quickstart
 
@@ -35,24 +36,40 @@ checks are reported N/A.
 
 ## Output
 
-The scorecard — one row per check with its status, score, and a one-line
-justification — plus the overall grade, a 0–100 rating with a letter, and a
-short prose summary of the biggest issue and what to fix first:
+The scorecard — one row per check, each scored **out of 10** — plus one final
+score and written feedback:
 
 ```
                                env_audit · gsm8k
 ┃ check             ┃ status ┃ score ┃ justification                           ┃
-│ integrity         │ PASS   │    95 │ loads, reward callable, well-formed     │
-│ problem_alignment │ PASS   │    90 │ dataset/reward match the stated goal    │
-│ reward_design     │ PASS   │    88 │ discriminates; matches judgment 18/20   │
+│ integrity         │ PASS   │   9.5 │ loads, reward callable, well-formed     │
+│ problem_alignment │ PASS   │   9.0 │ dataset/reward match the stated goal    │
+│ reward_design     │ PASS   │   8.8 │ discriminates; matches judgment 18/20   │
 │ latency           │ N/A    │     — │ no endpoint                             │
 │ rollout_quality   │ N/A    │     — │ no endpoint                             │
-│ contamination     │ WARN   │    60 │ 3 near-matches with GSM8K test          │
-overall: WARN   rating: B (83/100)
+│ contamination     │ WARN   │   6.0 │ 3 near-matches with GSM8K test          │
+overall: WARN   rating: B (8.7/10)
+
+feedback
+The environment is solidly built: it loads cleanly, the reward is a real
+verifier (boxed-answer extraction + math equivalence, not a stub), and it
+discriminates well — correct completions scored 1.0 and every wrong or
+malformed probe scored 0.0, matching my own judgment on 18 of 20 cases.
+
+The main thing to improve is contamination: 3 of 20 sampled training
+instances near-match the GSM8K test split, so benchmark gains may partly be
+memorization — either dedupe against the test split or report on a different
+benchmark. Second, the parser only accepts \boxed{} answers; consider
+accepting plain final-line answers too, or the policy gets zero reward for
+correct-but-unformatted output early in training.
 ```
 
-A `FAIL` on any check fails the audit. The rating averages only the checks that
-ran (N/A excluded).
+- **Final score** — a weighted average out of 10 over the checks that ran (N/A
+  excluded). Latency and contamination weigh **0.5** each, the other four
+  checks **1.0**.
+- **Feedback** — 1–3 paragraphs: what the env does right first, then what to
+  improve, in priority order.
+- A `FAIL` on any check fails the audit.
 
 ## The six checks
 

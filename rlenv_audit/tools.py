@@ -240,21 +240,32 @@ _STATUS_STYLE = {
 }
 _GRADE_STYLE = {"A": "bold green", "B": "green", "C": "yellow", "D": "yellow", "F": "bold red"}
 
+# Rating weights. Latency (informational) and contamination (often expected for
+# eval-style envs) count half as much as the four core checks.
+CHECK_WEIGHTS = {"latency": 0.5, "contamination": 0.5}
+
 
 def _letter(score: float) -> str:
-    return "A" if score >= 90 else "B" if score >= 75 else "C" if score >= 60 else "D" if score >= 40 else "F"
+    return "A" if score >= 9 else "B" if score >= 7.5 else "C" if score >= 6 else "D" if score >= 4 else "F"
 
 
 def build_scorecard(data: dict) -> dict:
-    """Compute overall grade + rating from a ``{env_id, checks:[...]}`` result.
+    """Compute overall grade + rating from a ``{env_id, checks:[...], feedback?}``
+    result.
 
-    Each check is ``{name, status, score (0-100|null), justification}``. The
-    rating averages the numeric scores of the checks that actually ran (N/A and
-    null-score checks are excluded).
+    Each check is ``{name, status, score (0-10|null), justification}``. The
+    rating (0-10) is the weighted average of the checks that actually ran (N/A
+    and null-score checks are excluded); latency and contamination weigh 0.5,
+    every other check 1.0.
     """
     checks = data.get("checks", [])
-    scored = [c["score"] for c in checks if isinstance(c.get("score"), (int, float))]
-    rating = round(sum(scored) / len(scored)) if scored else None
+    scored = [
+        (c["score"], CHECK_WEIGHTS.get(c.get("name"), 1.0))
+        for c in checks
+        if isinstance(c.get("score"), (int, float))
+    ]
+    total_w = sum(w for _, w in scored)
+    rating = round(sum(s * w for s, w in scored) / total_w, 1) if total_w else None
     statuses = {c.get("status") for c in checks}
     if "FAIL" in statuses or "ERROR" in statuses:
         grade = "FAIL"
@@ -270,6 +281,7 @@ def build_scorecard(data: dict) -> dict:
         "rating": rating,
         "letter": _letter(rating) if rating is not None else None,
         "checks": checks,
+        "feedback": data.get("feedback"),
     }
 
 
@@ -292,13 +304,16 @@ def render_scorecard(data: dict) -> None:
         table.add_row(
             c.get("name", "?"),
             Text(status, style=_STATUS_STYLE.get(status, "")),
-            ("—" if not isinstance(score, (int, float)) else f"{score:g}"),
+            ("—" if not isinstance(score, (int, float)) else f"{score:.1f}"),
             c.get("justification", ""),
         )
     console.print(table)
     if card["rating"] is not None:
-        grade = Text(f"{card['letter']} ({card['rating']}/100)", style=_GRADE_STYLE.get(card["letter"], "bold"))
+        grade = Text(f"{card['letter']} ({card['rating']}/10)", style=_GRADE_STYLE.get(card["letter"], "bold"))
         console.print(Text.assemble("overall: ", Text(card["grade"], style=_STATUS_STYLE.get(card["grade"], "bold")),
                                      "   rating: ", grade))
     else:
         console.print(Text(f"overall: {card['grade']}   rating: N/A", style="bold"))
+    if card.get("feedback"):
+        console.print(Text("\nfeedback", style="bold"))
+        console.print(str(card["feedback"]).strip())
