@@ -7,10 +7,10 @@
 **env_audit** audits [`verifiers`](https://github.com/PrimeIntellect-ai/verifiers)
 RL environments from the Prime Intellect Hub *before* you spend GPU hours
 training on them. RL environments are treated like training data, but nobody
-tests them first — a broken reward function doesn't crash, it silently teaches
-the policy garbage. env_audit catches that: point an agent (Claude Code / Codex)
-at an environment and it runs **six judgment-based checks** — each a skill file
-the agent executes, backed by a small deterministic tool layer — and returns a
+tests them first: a broken reward function doesn't crash, it silently teaches
+the policy garbage. env_audit catches that. Point an agent (Claude Code / Codex)
+at an environment and it runs **six judgment-based checks** (each a skill file
+the agent executes, backed by a small deterministic tool layer) and returns a
 scorecard with a score out of 10, a status, and a written justification per
 check, plus overall feedback on what the env does right and what to improve.
 
@@ -22,7 +22,7 @@ uvx rlenv-audit install-skills
 pip install rlenv-audit && rlenv-audit install-skills
 ```
 
-Then ask your agent, giving the **full environment id** (`account/name` — bare
+Then ask your agent, giving the **full environment id** (`account/name`; bare
 names like `gsm8k` are ambiguous on the Hub), your **problem statement**, and
 optionally a **model endpoint** and the **HuggingFace datasets** to check
 contamination against:
@@ -39,7 +39,7 @@ Check contamination against openai/gsm8k.
 
 ## Output
 
-The scorecard — one row per check, each scored **out of 10** — plus one final
+The scorecard, one row per check, each scored **out of 10**, plus one final
 score and written feedback:
 
 ```
@@ -56,22 +56,22 @@ overall: WARN   rating: 8.7/10
 feedback
 The environment is solidly built: it loads cleanly, the reward is a real
 verifier (boxed-answer extraction + math equivalence, not a stub), and it
-discriminates well — correct completions scored 1.0 and every wrong or
+discriminates well: correct completions scored 1.0 and every wrong or
 malformed probe scored 0.0, matching my own judgment on 18 of 20 cases.
 
 The main thing to improve is contamination: 3 of the sampled training
 instances near-match the openai/gsm8k test split you asked me to check, so
-benchmark gains may partly be memorization — either dedupe against that test
+benchmark gains may partly be memorization; either dedupe against that test
 split or report on a different set. Second, the parser only accepts \boxed{}
 answers; consider
 accepting plain final-line answers too, or the policy gets zero reward for
 correct-but-unformatted output early in training.
 ```
 
-- **Final score** — a weighted average out of 10 over the checks that ran (N/A
+- **Final score**: a weighted average out of 10 over the checks that ran (N/A
   carries no weight). Latency and contamination weigh **0.5** each, the other
   four checks **1.0**.
-- **Feedback** — 1–3 paragraphs: what the env does right first, then what to
+- **Feedback**: 1 to 3 paragraphs, what the env does right first, then what to
   improve, in priority order.
 - A `FAIL` on any check fails the audit.
 
@@ -79,12 +79,12 @@ correct-but-unformatted output early in training.
 
 | # | Check | Needs | What it does |
 |---|-------|-------|--------------|
-| 1 | **integrity** | — | Does it even run and is it shaped right: dataset loads & is well-formed, reward present & callable, follows verifiers conventions, no missing fields / broken imports. |
-| 2 | **problem-statement alignment** | — | Given your problem statement (a required input), judge whether the dataset + reward + prompt actually test that problem. |
-| 3 | **reward design** | — | Stress-tests the reward without the policy: the agent writes ~20 synthetic completions (correct / wrong / edge / format perturbations), scores them through the real reward, and checks (a) the reward varies & discriminates sensibly and (b) each reward matches the agent's own judgment of quality. |
+| 1 | **integrity** | - | Does it even run and is it shaped right: dataset loads & is well-formed, reward present & callable, follows verifiers conventions, no missing fields / broken imports. |
+| 2 | **problem-statement alignment** | - | Given your problem statement (a required input), judge whether the dataset + reward + prompt actually test that problem. |
+| 3 | **reward design** | - | Stress-tests the reward without the policy: the agent writes ~20 synthetic completions (correct / wrong / edge / format perturbations), scores them through the real reward, and checks (a) the reward varies & discriminates sensibly and (b) each reward matches the agent's own judgment of quality. |
 | 4 | **latency** | model endpoint | How long rollouts take end to end. Reads the shared cached rollouts. |
-| 5 | **rollout quality** | model endpoint | Reads actual rollouts and judges whether the env is set up well in practice — system prompt right, outputs sensible, obvious env-caused failure modes. |
-| 6 | **contamination** | HF dataset ids | Compares the env's dataset against the HuggingFace datasets *you* name (e.g. `openai/gsm8k`) and flags matching / near-matching instances. **N/A** — and carries no weight — if you don't provide any. |
+| 5 | **rollout quality** | model endpoint | Reads actual rollouts and judges whether the env is set up well in practice: system prompt right, outputs sensible, obvious env-caused failure modes. |
+| 6 | **contamination** | HF dataset ids | Compares the env's dataset against the HuggingFace datasets *you* name (e.g. `openai/gsm8k`) and flags matching / near-matching instances. **N/A** (carries no weight) if you don't provide any. |
 
 **Shared rollouts (checks 4 & 5).** Both need a model, so env_audit runs
 rollouts **once** (8 rollouts over ~20 samples, scored + timed, cached) and both
@@ -96,7 +96,7 @@ checks read that single cache. No endpoint → 4 & 5 are **N/A**.
 skills/                 the six checks + the env-audit orchestrator (SKILL.md each)
 .claude-plugin/         plugin + marketplace manifests (repo doubles as a Claude Code plugin)
 rlenv_audit/
-  adapters/verifiers.py EnvHandle — the only code that touches verifiers
+  adapters/verifiers.py EnvHandle, the only code that touches verifiers
   tools.py              inspect / score / rollouts / scorecard
   sandbox.py            Docker isolation (for executing risky completions)
   cli.py                the rlenv-audit / env-audit CLI (+ install-skills)
