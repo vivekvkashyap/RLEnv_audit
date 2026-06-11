@@ -16,8 +16,9 @@ a **score (0–100), a status, and a one-line justification**.
 Ask the user (or take from their request) and confirm:
 
 1. **env id** (required) — e.g. `gsm8k`, `primeintellect/aime2024`.
-2. **problem statement** (optional) — what the user says this env is meant to
-   test/train. Enables check 2; if absent, check 2 is **N/A**.
+2. **problem statement** (required) — what the user is trying to train/test with
+   this env. Check 2 judges the env against it. If the user didn't give one, ask
+   for it before starting — don't guess it from the env.
 3. **model endpoint** (optional) — an OpenAI-compatible endpoint + model name, or
    "dummy", or none. Enables checks 4 & 5; if absent, both are **N/A**. If the
    user didn't mention one, ask once: "Do you have a model endpoint for the
@@ -53,7 +54,7 @@ its skill (installed alongside this one; in the repo they live under `skills/`),
 in order, and collect `{name, status, score, justification}`:
 
 - `env-audit-integrity`
-- `env-audit-problem-alignment` (N/A if no problem statement)
+- `env-audit-problem-alignment`
 - `env-audit-reward-design`
 - `env-audit-contamination`
 
@@ -77,7 +78,7 @@ Write all six results to `/tmp/envaudit_results.json`:
 ```json
 {"env_id": "<env>", "checks": [
   {"name": "integrity", "status": "PASS|WARN|FAIL", "score": 0-100, "justification": "..."},
-  {"name": "problem_alignment", "status": "PASS|WARN|FAIL|N/A", "score": 0-100|null, "justification": "..."},
+  {"name": "problem_alignment", "status": "PASS|WARN|FAIL", "score": 0-100, "justification": "..."},
   {"name": "reward_design", "status": "...", "score": ..., "justification": "..."},
   {"name": "latency", "status": "PASS|WARN|N/A", "score": ...|null, "justification": "..."},
   {"name": "rollout_quality", "status": "...", "score": ..., "justification": "..."},
@@ -91,8 +92,8 @@ user a short prose summary: the grade, the biggest issue, and what to fix first.
 
 ## Rules
 
-- A check is **N/A** only for the documented reasons (no problem statement; no
-  endpoint). Never N/A a check just because it's hard.
+- A check is **N/A** only for the documented reason (no endpoint). Never N/A a
+  check just because it's hard.
 - Every score needs a justification grounded in what you actually observed
   (tool output, completions you wrote, rollouts you read) — never a vibe.
 - Statuses: **PASS** ≈ 75–100, **WARN** ≈ 40–74, **FAIL** ≈ 0–39 (use judgement

@@ -11,6 +11,6 @@ The same tools are exposed on the ``env_audit`` / ``rlenv-audit`` CLI.
 
 from rlenv_audit.adapters.verifiers import EnvHandle, EnvLoadError, load_handle
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 __all__ = ["load_handle", "EnvHandle", "EnvLoadError", "__version__"]

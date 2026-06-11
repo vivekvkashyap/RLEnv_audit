@@ -1,21 +1,16 @@
 ---
 name: env-audit-problem-alignment
-description: Problem-statement alignment check (conditional) — given a problem statement the user provides, judge whether the environment actually tests what they claim they're trying to solve. Skipped and marked N/A if no problem statement is given.
+description: Problem-statement alignment check — given the user's problem statement (a required audit input), judge whether the environment actually tests what they claim they're trying to solve.
 ---
 
-# Check 2 — problem-statement alignment (conditional)
+# Check 2 — problem-statement alignment
 
 **Question:** does this environment actually test the thing the user says they
 want to solve?
 
-**Conditional:** if the user gave **no problem statement**, output immediately:
-
-```json
-{"name": "problem_alignment", "status": "N/A", "score": null,
- "justification": "no problem statement provided"}
-```
-
-Otherwise, this check needs no model — only your judgement over the env.
+The problem statement is a **required audit input** — if you don't have it, ask
+the user for it before scoring; never guess one from the env itself. This check
+needs no model — only your judgement over the env.
 
 ## Steps
 

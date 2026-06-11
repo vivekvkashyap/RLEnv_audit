@@ -87,8 +87,9 @@ Four commands, each JSON-in/JSON-out:
 
 1. **integrity** — does it run and is it shaped right (dataset, reward, conventions,
    imports). No endpoint.
-2. **problem-alignment** (conditional) — given the user's problem statement, does
-   the env actually test it. **N/A** without a problem statement. No endpoint.
+2. **problem-alignment** — given the user's problem statement (a required audit
+   input; the agent asks for it if missing), does the env actually test it. No
+   endpoint.
 3. **reward-design** — agent writes ~20 synthetic completions (correct / wrong /
    edge / format perturbations), scores them, and checks (a) variance &
    discrimination and (b) agreement between the reward and the agent's own quality
@@ -99,8 +100,8 @@ Four commands, each JSON-in/JSON-out:
 6. **contamination** — infer domain → pick benchmarks → check dataset overlap. No
    endpoint.
 
-The **env-audit** orchestrator skill gathers inputs (env id, optional problem
-statement, optional endpoint), runs the no-endpoint checks, generates the shared
+The **env-audit** orchestrator skill gathers inputs (env id, problem statement,
+optional endpoint), runs the no-endpoint checks, generates the shared
 rollouts once if an endpoint is given, runs the endpoint checks from that cache,
 and assembles the scorecard.
 
@@ -109,7 +110,7 @@ and assembles the scorecard.
 Each check returns `{name, status, score (0–100|null), justification}`.
 
 - **status**: PASS (~75–100) / WARN (~40–74) / FAIL (~0–39) / **N/A** (documented
-  skip: no problem statement, no endpoint).
+  skip: no endpoint).
 - **rating**: the mean of the numeric scores over checks that actually ran (N/A
   excluded), mapped to an A–F letter.
 - **grade**: the worst meaningful status (any FAIL → FAIL).
