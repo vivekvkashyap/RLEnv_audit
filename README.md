@@ -70,6 +70,10 @@ correct-but-unformatted output early in training.
 - **Feedback**: 1 to 3 paragraphs, what the env does right first, then what to
   improve, in priority order.
 - A `FAIL` on any check fails the audit.
+- The full report is also saved to
+  `rlenv_audit_reports/<account>__<name>/report.md` (human-readable) and
+  `report.json` (machine-readable) in your working directory, so you can commit
+  it, share it, or diff it against a re-audit after fixes.
 
 ## The six checks
 

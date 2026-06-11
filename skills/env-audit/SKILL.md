@@ -115,6 +115,25 @@ rating is a **weighted average out of 10** over the checks that ran (N/A
 excluded): latency and contamination weigh 0.5, the other four checks 1.0 — the
 tool computes this for you.
 
+## 6. Save the report
+
+Persist the audit so it outlives the session (skip only if the user says not to
+save). Create `rlenv_audit_reports/<account>__<name>/` in the working directory
+and write two files:
+
+1. **`report.json`** — the machine-readable result:
+   `rlenv-audit scorecard /tmp/envaudit_results.json --json > rlenv_audit_reports/<account>__<name>/report.json`
+   (the computed scorecard: checks, grade, rating, feedback).
+2. **`report.md`** — the human-readable report, which you author:
+   - title (`# rlenv_audit — <account>/<name>`) and the date;
+   - **Inputs**: env id, the user's problem statement, endpoint + model (or
+     "none"), contamination datasets (or "none");
+   - **Scorecard**: the six checks as a markdown table (check / status / score
+     / justification) plus the final `rating: N.N/10`;
+   - **Feedback**: the same feedback paragraphs from the results JSON.
+
+End by telling the user where the report was saved.
+
 ## Rules
 
 - A check is **N/A** only for the documented reasons (no endpoint → latency,

@@ -106,7 +106,8 @@ The **env-audit** orchestrator skill gathers inputs (fully qualified env id,
 problem statement, optional endpoint, optional contamination datasets), runs
 the no-endpoint checks, generates the shared
 rollouts once if an endpoint is given, runs the endpoint checks from that cache,
-and assembles the scorecard.
+assembles the scorecard, and saves the report (`report.md` + `report.json`)
+under `rlenv_audit_reports/<account>__<name>/`.
 
 ## 7. Scoring model
 
