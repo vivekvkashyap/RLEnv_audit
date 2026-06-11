@@ -238,15 +238,9 @@ _STATUS_STYLE = {
     "PASS": "bold green", "WARN": "bold yellow", "FAIL": "bold red",
     "N/A": "dim", "SKIP": "dim", "ERROR": "bold red",
 }
-_GRADE_STYLE = {"A": "bold green", "B": "green", "C": "yellow", "D": "yellow", "F": "bold red"}
-
-# Rating weights. Latency (informational) and contamination (often expected for
-# eval-style envs) count half as much as the four core checks.
+# Rating weights. Latency (informational) and contamination (user-opt-in,
+# often expected for eval-style envs) count half as much as the core checks.
 CHECK_WEIGHTS = {"latency": 0.5, "contamination": 0.5}
-
-
-def _letter(score: float) -> str:
-    return "A" if score >= 9 else "B" if score >= 7.5 else "C" if score >= 6 else "D" if score >= 4 else "F"
 
 
 def build_scorecard(data: dict) -> dict:
@@ -279,7 +273,6 @@ def build_scorecard(data: dict) -> dict:
         "env_id": data.get("env_id"),
         "grade": grade,
         "rating": rating,
-        "letter": _letter(rating) if rating is not None else None,
         "checks": checks,
         "feedback": data.get("feedback"),
     }
@@ -309,9 +302,8 @@ def render_scorecard(data: dict) -> None:
         )
     console.print(table)
     if card["rating"] is not None:
-        grade = Text(f"{card['letter']} ({card['rating']}/10)", style=_GRADE_STYLE.get(card["letter"], "bold"))
         console.print(Text.assemble("overall: ", Text(card["grade"], style=_STATUS_STYLE.get(card["grade"], "bold")),
-                                     "   rating: ", grade))
+                                     "   rating: ", Text(f"{card['rating']}/10", style="bold")))
     else:
         console.print(Text(f"overall: {card['grade']}   rating: N/A", style="bold"))
     if card.get("feedback"):

@@ -1,47 +1,55 @@
 ---
 name: env-audit-contamination
-description: Contamination check — infer the environment's domain (math, coding, etc.), pick the common public benchmarks for that domain, and check whether dataset instances match or near-match benchmark instances. Matching instances lower the score; a clean dataset scores high.
+description: Contamination check — compare the environment's dataset against the HuggingFace datasets the user explicitly provided. N/A (carries no weight in the rating) if the user provided none. Matching instances lower the score; a clean dataset scores high.
 ---
 
 # Check 6 — contamination
 
-**Question:** does this env's dataset overlap public benchmarks, so that
-"improvement" measured on those benchmarks would be partly memorization?
+**Question:** does this env's dataset overlap the datasets the user cares about,
+so that "improvement" measured on them would be partly memorization?
 
-No model needed — your judgement plus the dataset.
+**Runs only against user-provided datasets.** The user names the HuggingFace
+datasets to check (ids like `openai/gsm8k`, or hf.co links — normalize a link to
+its `org/name` id). Do **not** pick benchmarks yourself. If the user provided
+none, output immediately:
+
+```json
+{"name": "contamination", "status": "N/A", "score": null,
+ "justification": "no contamination datasets provided"}
+```
+
+(N/A is excluded from the rating, so the check carries no weight when skipped.)
 
 ## Steps
 
-1. **Infer the domain.** From `/tmp/envaudit_inspect.json` (sample tasks + system
-   prompt), decide the domain: grade-school math, competition math, general
-   coding, competitive programming, QA/trivia, reasoning, etc.
+1. **Load each provided dataset** with the `datasets` library (it ships with
+   verifiers), e.g.
+   `python -c "from datasets import load_dataset; ds = load_dataset('openai/gsm8k', 'main', split='test')"`.
+   Use the split the user named; default to `test`, falling back to `train`.
+   If a dataset can't be loaded (bad id, gated, offline), say so in the
+   justification and judge from the ones that did load; if none load, output
+   **N/A** with that reason.
 
-2. **Pick the benchmarks that matter for that domain.** Examples:
-   - grade-school math → GSM8K
-   - competition/contest math → MATH, AIME, AMC, MATH-500
-   - coding → HumanEval, MBPP, LiveCodeBench
-   - QA/knowledge → TriviaQA, Natural Questions, SimpleQA
-   - reasoning/MCQ → MMLU, MMLU-Pro, GPQA
-   Name the specific ones you'll check against.
+2. **Get a good slice of the env's dataset.** Re-run
+   `rlenv-audit inspect <env> -n 100` (or more) so the comparison isn't limited
+   to the orchestrator's 20-sample inspect.
 
-3. **Check for overlap.** Compare the env's dataset instances against those
-   benchmarks' instances:
-   - If you can load a benchmark (e.g. via `datasets`), do an n-gram / near-exact
-     match of question text and report concrete matching pairs.
-   - Otherwise reason from known benchmark contents and the dataset's stated
-     source (many Hub envs literally *are* a benchmark — e.g. an `aime2024` env
-     is AIME-2024; an env whose source loads `openai/gsm8k[test]` overlaps GSM8K
-     by construction). Distinguish **same-template-different-instance** (fine)
-     from **same instance** (contamination).
-   - Note the train/eval distinction: an explicit *eval* env that *is* a
-     benchmark is expected; a *training* env overlapping a benchmark you'll
-     report on is the real problem.
+3. **Compare instances.** For each env instance vs. each provided dataset:
+   - normalize the question text (lowercase, collapse whitespace, strip
+     punctuation) and look for exact or near-exact matches (high n-gram
+     containment), not just shared boilerplate;
+   - distinguish **same-template-different-instance** (fine) from **same
+     instance** (contamination);
+   - report concrete matching pairs (env row ↔ dataset row) with counts;
+   - note the train/eval distinction: an explicit *eval* env that *is* one of
+     the provided datasets is expected — say so; a *training* dataset
+     overlapping the user's eval set is the real problem.
 
 ## Output
 
 Score 0–10 where 10 = clean, lower = more overlap:
 
 ```json
-{"name": "contamination", "status": "PASS|WARN|FAIL", "score": <int>,
- "justification": "<one line: domain, benchmarks checked, overlap found (counts) or clean>"}
+{"name": "contamination", "status": "PASS|WARN|FAIL", "score": <0-10>,
+ "justification": "<one line: datasets checked, matches found (counts) or clean>"}
 ```

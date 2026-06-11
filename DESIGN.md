@@ -98,11 +98,13 @@ Four commands, each JSON-in/JSON-out:
 4. **latency** — end-to-end rollout timing from the shared cache. Needs an endpoint.
 5. **rollout-quality** — reads actual rollouts and judges the env setup (system
    prompt, output sensibility, env-caused failure modes). Needs an endpoint.
-6. **contamination** — infer domain → pick benchmarks → check dataset overlap. No
-   endpoint.
+6. **contamination** — compare the env's dataset against the HuggingFace
+   datasets the user explicitly named (never default benchmarks). **N/A** — and
+   no weight — when none are given. No endpoint.
 
-The **env-audit** orchestrator skill gathers inputs (env id, problem statement,
-optional endpoint), runs the no-endpoint checks, generates the shared
+The **env-audit** orchestrator skill gathers inputs (fully qualified env id,
+problem statement, optional endpoint, optional contamination datasets), runs
+the no-endpoint checks, generates the shared
 rollouts once if an endpoint is given, runs the endpoint checks from that cache,
 and assembles the scorecard.
 
@@ -113,11 +115,11 @@ results object also carries a written `feedback` field (1–3 paragraphs: what t
 env does right, then what to improve, in priority order).
 
 - **status**: PASS (~7.5–10) / WARN (~4–7.4) / FAIL (~0–3.9) / **N/A**
-  (documented skip: no endpoint).
+  (documented skips: no endpoint → latency, rollout_quality; no user-provided
+  datasets → contamination).
 - **rating**: a weighted average out of 10 over the checks that actually ran
-  (N/A excluded). Latency (informational) and contamination (often expected for
-  eval-style envs) weigh 0.5; the other four checks weigh 1.0. Mapped to an A–F
-  letter (A ≥ 9, B ≥ 7.5, C ≥ 6, D ≥ 4).
+  (N/A carries no weight). Latency (informational) and contamination
+  (user-opt-in) weigh 0.5; the other four checks weigh 1.0.
 - **grade**: the worst meaningful status (any FAIL/ERROR → FAIL).
 
 Every score must be grounded in observed evidence — tool output, completions the

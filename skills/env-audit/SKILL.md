@@ -15,7 +15,10 @@ a **score (0–10), a status, and a one-line justification**.
 
 Ask the user (or take from their request) and confirm:
 
-1. **env id** (required) — e.g. `gsm8k`, `primeintellect/aime2024`.
+1. **env id** (required) — the **fully qualified** Hub id `account/name`, e.g.
+   `primeintellect/gsm8k`. Bare names like `gsm8k` are ambiguous (many accounts
+   publish same-named envs on the Hub) — if the user gives one, ask for the full
+   id before starting.
 2. **problem statement** (required) — what the user is trying to train/test with
    this env. Check 2 judges the env against it. If the user didn't give one, ask
    for it before starting — don't guess it from the env.
@@ -23,6 +26,10 @@ Ask the user (or take from their request) and confirm:
    "dummy", or none. Enables checks 4 & 5; if absent, both are **N/A**. If the
    user didn't mention one, ask once: "Do you have a model endpoint for the
    rollout checks, or should I skip them?"
+4. **contamination datasets** (optional) — HuggingFace dataset ids or links
+   (e.g. `openai/gsm8k`) to check the env's dataset against. Enables check 6;
+   if none are given, contamination is **N/A** and carries no weight. Never
+   substitute default benchmarks of your own.
 
 ## 1. Set up (self-bootstrapping)
 
@@ -35,10 +42,10 @@ Do whatever setup is missing — the user shouldn't have to prepare anything:
    `vf-install` command.
 2. **The environment.** Try the inspect in step 2; if it fails with a
    load/import error, install the env and retry:
-   `vf-install <env>` for Hub envs (e.g. `primeintellect/gsm8k`), or
-   `vf-install <env> -r` for the verifiers example envs. Note: most Hub envs
-   need Python ≥ 3.11. The env must land in the **same Python environment** as
-   `rlenv-audit` (verifiers loads envs by importing them).
+   `vf-install <account>/<env>` (e.g. `vf-install primeintellect/gsm8k`).
+   Note: most Hub envs need Python ≥ 3.11. The env must land in the **same
+   Python environment** as `rlenv-audit` (verifiers loads envs by importing
+   them).
 
 ## 2. Load the environment once
 
@@ -56,7 +63,7 @@ in order, and collect `{name, status, score, justification}`:
 - `env-audit-integrity`
 - `env-audit-problem-alignment`
 - `env-audit-reward-design`
-- `env-audit-contamination`
+- `env-audit-contamination` (N/A if the user provided no datasets to check)
 
 ## 4. Shared rollouts, then the endpoint checks (4, 5)
 
@@ -83,7 +90,7 @@ written **feedback** section, to `/tmp/envaudit_results.json`:
   {"name": "reward_design", "status": "...", "score": ..., "justification": "..."},
   {"name": "latency", "status": "PASS|WARN|N/A", "score": ...|null, "justification": "..."},
   {"name": "rollout_quality", "status": "...", "score": ..., "justification": "..."},
-  {"name": "contamination", "status": "PASS|WARN|FAIL", "score": ..., "justification": "..."}
+  {"name": "contamination", "status": "PASS|WARN|FAIL|N/A", "score": ...|null, "justification": "..."}
 ], "feedback": "<1-3 paragraphs>"}
 ```
 
@@ -99,7 +106,8 @@ tool computes this for you.
 
 ## Rules
 
-- A check is **N/A** only for the documented reason (no endpoint). Never N/A a
+- A check is **N/A** only for the documented reasons (no endpoint → latency,
+  rollout_quality; no contamination datasets → contamination). Never N/A a
   check just because it's hard.
 - Every score needs a justification grounded in what you actually observed
   (tool output, completions you wrote, rollouts you read) — never a vibe.

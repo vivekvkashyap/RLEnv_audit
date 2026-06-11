@@ -43,7 +43,6 @@ def test_build_scorecard_excludes_na_from_rating():
         {"name": "latency", "status": "N/A", "score": None, "justification": "no endpoint"},
     ]})
     assert card["rating"] == 7.5         # (9 + 6) / 2, N/A excluded
-    assert card["letter"] == "B"
     assert card["grade"] == "WARN"
 
 
