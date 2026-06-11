@@ -8,9 +8,12 @@ description: Problem-statement alignment check — given the user's problem stat
 **Question:** does this environment actually test the thing the user says they
 want to solve?
 
-The problem statement is a **required audit input** — if you don't have it, ask
-the user for it before scoring; never guess one from the env itself. This check
-needs no model — only your judgement over the env.
+The problem statement is a **required audit input**. If you don't have it,
+**stop and tell the user**: "A problem statement must be specified — what are
+you trying to train or test with this environment?" Do not score this check, do
+not substitute a guess from the env itself, and do not silently skip it — wait
+for the user's answer. This check needs no model — only your judgement over the
+env.
 
 ## Steps
 

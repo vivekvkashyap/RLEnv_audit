@@ -31,7 +31,11 @@ them through the real reward function.
 
 3. **Score them.** Run
    `rlenv-audit score <env> /tmp/envaudit_completions.json --out /tmp/envaudit_scores.json`
-   and read the `(label, prompt_index, reward)` triples.
+   and read the `(label, prompt_index, reward)` triples. If individual entries
+   come back with an `error` instead of a reward, quote it — a reward function
+   that crashes on ordinary completions (empty text, long text) is itself a
+   defect. If **every** entry errors, this check is a **FAIL** with the error as
+   the justification.
 
 4. **Judge two things:**
    - **(a) Variance & discrimination.** Is there real spread in the rewards (not

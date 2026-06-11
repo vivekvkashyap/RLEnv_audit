@@ -14,7 +14,9 @@ This check needs no model. Use the `inspect` tool plus reading the source.
 1. **Load.** Read `/tmp/envaudit_inspect.json` if the orchestrator already wrote
    it; otherwise run `rlenv-audit inspect <env> -n 20 --out /tmp/envaudit_inspect.json`.
    If `loaded` is false → **FAIL**, score ≤ 2, justification = the `error`.
-   Stop here.
+   Stop here. (A *nonexistent* env id is the orchestrator's problem — it stops
+   and asks the user before this check runs. `loaded: false` here means the env
+   exists and is installed but crashes on load: a genuine defect.)
 
 2. **Dataset well-formed.** From the JSON, check:
    - `dataset_size.train` or `.eval` is non-zero;

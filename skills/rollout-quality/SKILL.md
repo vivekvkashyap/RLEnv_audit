@@ -18,7 +18,9 @@ up well — or is the setup itself causing failures?
 
 1. Read the **shared** rollout cache (`/tmp/envaudit_rollouts.json`) — the same
    one the latency check uses. Each sample has the `prompt`, the gold `answer`,
-   and `k` `rollouts` with their `text` and `reward`.
+   and `k` `rollouts` with their `text` and `reward`. If the file is missing but
+   an endpoint *was* configured, generate it once with
+   `rlenv-audit rollouts <env> --endpoint <url> --model <name> -n 20 -k 8 --out /tmp/envaudit_rollouts.json`.
    If the cache was generated with `--dummy` (`"dummy": true`), the texts are
    placeholders — there is no real model behavior to judge. Output **N/A** with
    justification "dummy rollouts — no real model outputs".

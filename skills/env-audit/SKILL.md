@@ -20,8 +20,10 @@ Ask the user (or take from their request) and confirm:
    publish same-named envs on the Hub) — if the user gives one, ask for the full
    id before starting.
 2. **problem statement** (required) — what the user is trying to train/test with
-   this env. Check 2 judges the env against it. If the user didn't give one, ask
-   for it before starting — don't guess it from the env.
+   this env. Check 2 judges the env against it. If the user didn't give one,
+   **stop and ask** before running anything: "A problem statement is required —
+   what are you trying to train or test with this environment?" Never guess one
+   from the env, and never start the audit without it.
 3. **model endpoint** (optional) — an OpenAI-compatible endpoint + model name, or
    "dummy", or none. Enables checks 4 & 5; if absent, both are **N/A**. If the
    user didn't mention one, ask once: "Do you have a model endpoint for the
@@ -47,12 +49,21 @@ Do whatever setup is missing — the user shouldn't have to prepare anything:
    Python environment** as `rlenv-audit` (verifiers loads envs by importing
    them).
 
+   **If the environment doesn't exist** — `vf-install` can't find a package by
+   that name (404 / "no matching distribution" / not found on the Hub), or the
+   module still isn't importable after a successful-looking install — **stop and
+   tell the user**: "There is no environment named `<account>/<name>` on the
+   Prime Intellect Hub" (quote the install error), and ask them to check the id.
+   A nonexistent environment is a wrong input, not an audit finding — produce
+   **no scorecard**.
+
 ## 2. Load the environment once
 
 Run `rlenv-audit inspect <env> -n 20 --out /tmp/envaudit_inspect.json` and read
-it. If `loaded` is false (after the bootstrap above), the **integrity** check
-fails immediately — report that as the scorecard and stop (the other checks
-can't run).
+it. If the env **installed but** `loaded` is false (it exists yet crashes on
+load), that is a genuine audit finding: the **integrity** check fails
+immediately — report that as the scorecard and stop (the other checks can't
+run).
 
 ## 3. Run the no-endpoint checks (1, 2, 3, 6)
 
@@ -88,7 +99,7 @@ written **feedback** section, to `/tmp/envaudit_results.json`:
   {"name": "integrity", "status": "PASS|WARN|FAIL", "score": 0-10, "justification": "..."},
   {"name": "problem_alignment", "status": "PASS|WARN|FAIL", "score": 0-10, "justification": "..."},
   {"name": "reward_design", "status": "...", "score": ..., "justification": "..."},
-  {"name": "latency", "status": "PASS|WARN|N/A", "score": ...|null, "justification": "..."},
+  {"name": "latency", "status": "PASS|WARN|FAIL|N/A", "score": ...|null, "justification": "..."},
   {"name": "rollout_quality", "status": "...", "score": ..., "justification": "..."},
   {"name": "contamination", "status": "PASS|WARN|FAIL|N/A", "score": ...|null, "justification": "..."}
 ], "feedback": "<1-3 paragraphs>"}
