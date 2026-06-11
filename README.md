@@ -1,5 +1,9 @@
 # env_audit
 
+[![PyPI](https://img.shields.io/pypi/v/rlenv-audit?color=blue)](https://pypi.org/project/rlenv-audit/)
+[![Python versions](https://img.shields.io/pypi/pyversions/rlenv-audit)](https://pypi.org/project/rlenv-audit/)
+[![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
+
 **A skill-based auditing system for RL environments.** Point an agent (Claude
 Code / Codex) at a [`verifiers`](https://github.com/PrimeIntellect-ai/verifiers)
 environment from the Prime Intellect Hub and it runs **six checks** and produces
@@ -41,8 +45,9 @@ Checks 1, 2, 3, 6 need no endpoint. No endpoint → 4 & 5 are **N/A**.
 
 ```bash
 # Install the skills (pick one)
-uvx --from git+https://github.com/vivekvkashyap/RLEnv_audit.git rlenv-audit install-skills
-pip install git+https://github.com/vivekvkashyap/RLEnv_audit.git && rlenv-audit install-skills
+uvx rlenv-audit install-skills
+pip install rlenv-audit && rlenv-audit install-skills
+uv add rlenv-audit                # as a library in a uv-managed project
 ```
 
 Or as a Claude Code plugin, no terminal needed:
