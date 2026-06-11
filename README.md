@@ -4,15 +4,11 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/rlenv-audit)](https://pypi.org/project/rlenv-audit/)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
-**rlenv_audit** audits [`verifiers`](https://github.com/PrimeIntellect-ai/verifiers)
-RL environments from the Prime Intellect Hub *before* you spend GPU hours
-training on them. RL environments are treated like training data, but nobody
-tests them first: a broken reward function doesn't crash, it silently teaches
-the policy garbage. rlenv_audit catches that. Point an agent (Claude Code / Codex)
-at an environment and it runs **six judgment-based checks** (each a skill file
-the agent executes, backed by a small deterministic tool layer) and returns a
-scorecard with a score out of 10, a status, and a written justification per
-check, plus overall feedback on what the env does right and what to improve.
+rlenv_audit audits [verifiers](https://github.com/PrimeIntellect-ai/verifiers)
+RL environments from the Prime Intellect Hub before you train on them. A broken
+reward function doesn't crash, it silently teaches the policy garbage. Point an
+agent (Claude Code / Codex) at an environment: it runs six checks and returns a
+scorecard out of 10 with written feedback on what to improve.
 
 ## Quickstart
 
