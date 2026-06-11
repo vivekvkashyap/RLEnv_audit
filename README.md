@@ -40,13 +40,16 @@ score and written feedback:
 
 ```
                        rlenv_audit · primeintellect/gsm8k
+┏━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃ check             ┃ status ┃ score ┃ justification                           ┃
+┡━━━━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
 │ integrity         │ PASS   │   9.5 │ loads, reward callable, well-formed     │
 │ problem_alignment │ PASS   │   9.0 │ dataset/reward match the stated goal    │
 │ reward_design     │ PASS   │   8.8 │ discriminates; matches judgment 18/20   │
 │ latency           │ N/A    │     — │ no endpoint                             │
 │ rollout_quality   │ N/A    │     — │ no endpoint                             │
 │ contamination     │ WARN   │   6.0 │ 3 near-matches with openai/gsm8k test   │
+└───────────────────┴────────┴───────┴─────────────────────────────────────────┘
 overall: WARN   rating: 8.7/10
 
 feedback
