@@ -17,9 +17,13 @@ up well — or is the setup itself causing failures?
 ## Steps
 
 1. Read the **shared** rollout cache (`/tmp/envaudit_rollouts.json`) — the same
-   one the latency check uses. Each sample has the `prompt`, the gold `answer`,
-   and `k` `rollouts` with their `text` and `reward`. If the file is missing but
-   an endpoint *was* configured, generate it once with
+   one the latency check uses, generated through verifiers' own `vf-eval` engine
+   so the rollouts follow the environment's *real* generation path (multi-turn /
+   tool-use envs roll out correctly, the env's own sampling args apply). Each
+   sample has the `prompt`, the gold `answer`, and `k` `rollouts`; each rollout
+   carries `text`, `reward`, `error`, and — straight from vf-eval — `truncated`,
+   `stop_reason`, and `output_tokens`. If the file is missing but an endpoint
+   *was* configured, generate it once with
    `rlenv-audit rollouts <env> --endpoint <url> --model <name> -n 20 -k 8 --out /tmp/envaudit_rollouts.json`.
    If the cache was generated with `--dummy` (`"dummy": true`), the texts are
    placeholders — there is no real model behavior to judge. Output **N/A** with
@@ -33,6 +37,15 @@ up well — or is the setup itself causing failures?
    - **Output sensibility** — given the prompts, are the model's outputs on-task
      and well-formed? If even reasonable outputs score 0, the env is likely
      mis-parsing or mis-rewarding them (cross-check with the rewards).
+   - **Truncation / format reachability** — check `truncated` and `stop_reason`.
+     Compute **one** number and use it everywhere: `truncated_frac` = (rollouts
+     with `truncated == true`) / (total rollouts). If it is high and those
+     rollouts stop on length / `max_turns_reached` before emitting the required
+     answer format (high `output_tokens`, no `\\boxed{}`), the reward is sparse for
+     a reason the env can fix (raise max tokens / context, or nudge for a shorter
+     answer) rather than a true capability gap. Quote that single fraction in your
+     analysis and in the justification — do not derive a second, differently-counted
+     truncation number from logs or `stop_reason`.
    - **Obvious failure modes caused by the env** — answers never match the parser,
      prompts truncated, tools/judge erroring, the task underspecified, the format
      impossible to satisfy, reward saturated at 0 or 1 for everything.

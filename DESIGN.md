@@ -78,8 +78,14 @@ Four commands, each JSON-in/JSON-out:
 - `rlenv-audit score <env> completions.json` → scores agent-written
   `[{prompt_index, label, text}]` through the reward function. Used by check 3.
 - `rlenv-audit rollouts <env> --endpoint --model -n 20 -k 8` (or `--dummy`) →
-  generates 8 rollouts over ~20 tasks **once**, scores + times them, caches to
-  JSON. Checks 4 and 5 share this single cache.
+  generates 8 rollouts over ~20 tasks **once** by driving verifiers' own
+  `vf-eval` engine (so rollouts follow the env's real generation path — multi-turn
+  and tool-use envs included — and the env's own sampling args apply), then
+  reshapes vf-eval's `results.jsonl`/`metadata.json` into a single cache carrying
+  per-rollout `text`, `reward`, `latency_s`, `truncated`, `stop_reason`,
+  `output_tokens` plus timing percentiles. Checks 4 and 5 share this cache.
+  `vf-eval` is a client over an OpenAI-compatible endpoint; it does not start a
+  model.
 - `rlenv-audit scorecard results.json` → computes the overall grade + rating
   (weighted average out of 10 over the checks that ran; N/A excluded) and
   renders the table + feedback.

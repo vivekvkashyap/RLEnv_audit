@@ -68,18 +68,25 @@ def score(env_id: str, completions_json: str, out: str | None) -> None:
 @main.command()
 @click.argument("env_id")
 @click.option("--endpoint", default=None, help="OpenAI-compatible base URL.")
-@click.option("--api-key", default=None, help="API key (else OPENAI_API_KEY).")
-@click.option("--model", default=None, help="model name (else first served / gpt-4o-mini).")
-@click.option("-n", "--samples", default=20, help="tasks to roll out.")
+@click.option("--api-key", default=None, help="API key (else OPENAI_API_KEY, else EMPTY for vLLM).")
+@click.option("--model", default=None, help="model name (else first model served by the endpoint).")
+@click.option("-n", "--samples", default=20, help="tasks (examples) to roll out.")
 @click.option("-k", "--rollouts", "k", default=8, help="rollouts per task.")
+@click.option("--max-tokens", default=1024, help="max tokens per generation (0 = model default).")
+@click.option("--temperature", default=None, type=float, help="sampling temperature (else env default).")
+@click.option("--max-concurrent", default=8, help="concurrent vf-eval requests.")
 @click.option("--dummy", is_flag=True, help="fake rollouts without an endpoint.")
 @click.option("--out", default=None, help="write JSON here (also cached by default).")
-def rollouts(env_id, endpoint, api_key, model, samples, k, dummy, out) -> None:
-    """Run K rollouts over N tasks once, score+time them, cache to JSON. The
-    latency and rollout-quality skills share this single cache."""
+def rollouts(env_id, endpoint, api_key, model, samples, k, max_tokens, temperature, max_concurrent, dummy, out) -> None:
+    """Generate K rollouts over N tasks once via verifiers' own vf-eval engine,
+    score+time them, and cache to JSON. The latency and rollout-quality skills
+    share this single cache. Requires the user's model endpoint to be up
+    (vf-eval is a client; it does not start a model)."""
     result = run_rollouts(
         env_id, endpoint=endpoint, api_key=api_key, model=model,
-        n_samples=samples, k=k, dummy=dummy, cache_path=out,
+        n_samples=samples, k=k, max_tokens=(max_tokens or None),
+        temperature=temperature, max_concurrent=max_concurrent,
+        dummy=dummy, cache_path=out,
     )
     click.echo(json.dumps({k2: v for k2, v in result.items() if k2 != "samples"}, indent=2, default=str))
     if "error" in result:

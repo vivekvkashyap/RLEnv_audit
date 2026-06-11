@@ -42,20 +42,37 @@ Do whatever setup is missing — the user shouldn't have to prepare anything:
    `pip install git+https://github.com/vivekvkashyap/RLEnv_audit.git` if the
    PyPI package is unavailable). This also brings in `verifiers` and its
    `vf-install` command.
-2. **The environment.** Try the inspect in step 2; if it fails with a
-   load/import error, install the env and retry:
-   `vf-install <account>/<env>` (e.g. `vf-install primeintellect/gsm8k`).
-   Note: most Hub envs need Python ≥ 3.11. The env must land in the **same
-   Python environment** as `rlenv-audit` (verifiers loads envs by importing
-   them).
+2. **Find rlenv-audit's Python environment — this is the one non-obvious step.**
+   `rlenv-audit` is often installed as a `uvx` / `uv` tool in its **own isolated
+   venv** (e.g. `~/.local/share/uv/tools/rlenv-audit/`), which is **not** the
+   active shell Python. `verifiers` and `vf-install` live in that same venv, and
+   the env package **must be installed into it** (verifiers loads an env by
+   importing it, so they must share one interpreter). Resolve it once and reuse
+   it for every install/inspect:
+   - `head -1 "$(command -v rlenv-audit)"` shows the interpreter on the launcher's
+     shebang; its directory is the venv's `bin/`. Use that `bin/vf-install` and
+     `bin/python` (e.g. `VENV=~/.local/share/uv/tools/rlenv-audit;
+     $VENV/bin/vf-install <account>/<env>`).
+   - Sanity-check after install: `$VENV/bin/python -c "import <module>"` (module =
+     the env name with `-`→`_`, last path segment), not the shell `python3`.
+   Note: most Hub envs need Python ≥ 3.11 — the uv tool venv usually already is.
+3. **The environment.** Try the inspect in section 2 below; if it fails with a
+   load/import error, install the env into the venv found above and retry:
+   `$VENV/bin/vf-install <account>/<env>` (e.g. `vf-install primeintellect/gsm8k`).
 
-   **If the environment doesn't exist** — `vf-install` can't find a package by
-   that name (404 / "no matching distribution" / not found on the Hub), or the
-   module still isn't importable after a successful-looking install — **stop and
-   tell the user**: "There is no environment named `<account>/<name>` on the
-   Prime Intellect Hub" (quote the install error), and ask them to check the id.
-   A nonexistent environment is a wrong input, not an audit finding — produce
-   **no scorecard**.
+   **Classify an install failure — do not conflate two different things:**
+   - **No such environment** — `vf-install` reports the id is *not found on the
+     Hub* (404 / "no matching distribution" / "could not find environment"). This
+     is a **wrong input**: **stop and tell the user** "There is no environment
+     named `<account>/<name>` on the Prime Intellect Hub" (quote the error), ask
+     them to check the id, and produce **no scorecard**.
+   - **Exists but won't install** — `vf-install` *finds* the package but the
+     install/build fails (dependency conflict, compile error, Python-version
+     mismatch), or it installs yet the module still isn't importable. Do **not**
+     claim the env doesn't exist. Report it as a setup/integrity failure: quote
+     the build error, say the environment exists on the Hub but could not be
+     installed in this environment, and stop. (If it imports but crashes on
+     *load*, that is the integrity finding in step 2, not here.)
 
 ## 2. Load the environment once
 
@@ -82,8 +99,11 @@ If the user gave an endpoint (or chose "dummy"):
 
 1. Generate the rollouts **once**:
    `rlenv-audit rollouts <env> --endpoint <url> --model <name> -n 20 -k 8 --out /tmp/envaudit_rollouts.json`
-   (or `--dummy` for a no-endpoint dry run). Eight rollouts over ~20 samples,
-   scored and timed, cached to that file.
+   (or `--dummy` for a no-endpoint dry run). This drives verifiers' own `vf-eval`
+   engine, so rollouts follow the environment's real generation path; eight
+   rollouts over ~20 samples, scored and timed (with per-rollout truncation and
+   token usage), cached to that file. `vf-eval` is a client — the user's served
+   model must be up; it does not start one.
 2. Run the `env-audit-latency` and `env-audit-rollout-quality` skills, both
    reading that **single cache** — do not roll out again.
 

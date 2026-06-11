@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import os
-import time
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -127,17 +127,81 @@ def score_completions(env_id: str, completions: list[dict]) -> dict[str, Any]:
 
 
 # -------------------------------------------------------------------- rollouts
-def _chat_messages(prompt) -> list[dict] | None:
-    if isinstance(prompt, str):
-        return [{"role": "user", "content": prompt}]
-    if isinstance(prompt, list):
-        out = []
-        for m in prompt:
-            if not isinstance(m, dict) or not isinstance(m.get("content"), str):
-                return None
-            out.append({"role": m.get("role"), "content": m["content"]})
-        return out
-    return None
+def _completion_text(completion: Any) -> str:
+    """Pull the assistant's text out of a vf-eval ``completion`` (a list of chat
+    messages, or already a string)."""
+    if isinstance(completion, str):
+        return completion
+    if not isinstance(completion, list):
+        return ""
+    parts: list[str] = []
+    for msg in completion:
+        if not isinstance(msg, dict) or msg.get("role") != "assistant":
+            continue
+        content = msg.get("content")
+        if isinstance(content, str):
+            parts.append(content)
+        elif isinstance(content, list):  # structured content parts
+            parts.append("".join(p.get("text", "") for p in content if isinstance(p, dict)))
+    return "\n".join(p for p in parts if p)
+
+
+def _timing_value(timing: Any, key: str) -> float | None:
+    """Read one duration (seconds) from a vf-eval rollout ``timing`` dict. Values
+    are either floats or ``{"duration": float}``."""
+    if not isinstance(timing, dict) or key not in timing:
+        return None
+    val = timing[key]
+    if isinstance(val, dict):
+        val = val.get("duration", 0.0)
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
+
+def _percentiles(values: list[float]) -> dict[str, Any]:
+    if not values:
+        return {}
+    s = sorted(values)
+    return {
+        "calls": len(s),
+        "mean_s": round(sum(s) / len(s), 3),
+        "p50_s": round(s[len(s) // 2], 3),
+        "p90_s": round(s[min(len(s) - 1, int(0.9 * len(s)))], 3),
+        "max_s": round(s[-1], 3),
+        "total_s": round(sum(s), 3),
+    }
+
+
+def _dummy_rollouts(env_id: str, n_samples: int, k: int, model: str | None) -> dict[str, Any]:
+    """Offline fake rollouts (no endpoint): real dataset rows, placeholder text,
+    scored through the real reward. Keeps ``--dummy`` working for smoke tests."""
+    handle = load_handle(env_id)
+    try:
+        try:
+            rows = handle.dataset(n=n_samples)
+        except DatasetLoadError as exc:
+            return {"env_id": env_id, "error": str(exc)}
+        if not rows:
+            return {"env_id": env_id, "error": "environment exposes no dataset"}
+        samples = []
+        for i, row in enumerate(rows):
+            rollouts = []
+            for j in range(k):
+                text = f"(dummy rollout {j} for task {i})"
+                try:
+                    reward, _ = handle.score(text, row["prompt"], row["answer"], row["info"], row.get("raw"))
+                except ScoringError:
+                    reward = None
+                rollouts.append({"text": text, "latency_s": 0.0, "reward": reward, "error": None,
+                                 "truncated": False, "stop_reason": None, "output_tokens": 0})
+            samples.append({"index": i, "prompt": row["prompt"], "answer": row["answer"], "rollouts": rollouts})
+        return {"env_id": env_id, "model": model or "dummy", "endpoint": "dummy",
+                "engine": "dummy", "dummy": True, "n_samples": len(samples), "k": k,
+                "timing": {}, "samples": samples}
+    finally:
+        handle.teardown()
 
 
 def run_rollouts(
@@ -148,103 +212,131 @@ def run_rollouts(
     model: str | None = None,
     n_samples: int = 20,
     k: int = 8,
-    max_tokens: int = 1024,
+    max_tokens: int | None = 1024,
+    temperature: float | None = None,
+    max_concurrent: int = 8,
     dummy: bool = False,
     cache_path: str | None = None,
 ) -> dict[str, Any]:
-    """Run (or fake, with ``dummy``) ``k`` rollouts over ``n_samples`` tasks once,
-    score them, time them, and cache to JSON.
+    """Generate a shared set of rollouts via verifiers' own ``vf-eval`` engine,
+    then score, time, and cache them to JSON.
 
-    Both the latency and rollout-quality skills read this single cache rather than
-    each generating their own rollouts. Returns the cached object.
+    Using vf-eval (rather than a hand-rolled chat loop) means rollouts run through
+    the *environment's real generation path*: multi-turn / tool-use envs roll out
+    correctly, the env's own sampling args apply, and vf-eval records per-rollout
+    timing, truncation and token usage for us. Both the latency and rollout-quality
+    skills read this single cache. ``vf-eval`` is a client over an OpenAI-compatible
+    endpoint — it does not start a model, so the user's served model must be up.
     """
-    handle = load_handle(env_id)
-    try:
-        try:
-            rows = handle.dataset(n=n_samples)
-        except DatasetLoadError as exc:
-            return {"env_id": env_id, "error": str(exc)}
-        if not rows:
-            return {"env_id": env_id, "error": "environment exposes no dataset"}
+    cache = Path(cache_path) if cache_path else CACHE_DIR / f"rollouts_{env_id.replace('/', '_')}.json"
+    cache.parent.mkdir(parents=True, exist_ok=True)
 
-        endpoint = endpoint or os.environ.get("OPENAI_BASE_URL")
-        api_key = api_key or os.environ.get("OPENAI_API_KEY")
-        client = None
-        if not dummy:
-            if not endpoint and not api_key:
-                return {"env_id": env_id, "error": "no model endpoint configured and --dummy not set"}
+    if dummy:
+        out = _dummy_rollouts(env_id, n_samples, k, model)
+        if "error" not in out:
+            cache.write_text(json.dumps(out, indent=2))
+            out["cache_path"] = str(cache)
+        return out
+
+    endpoint = endpoint or os.environ.get("OPENAI_BASE_URL")
+    api_key = api_key or os.environ.get("OPENAI_API_KEY") or "EMPTY"
+    if not endpoint:
+        return {"env_id": env_id, "error": "no model endpoint configured and --dummy not set"}
+
+    if not model:
+        try:
             from openai import OpenAI
 
-            client = OpenAI(base_url=endpoint, api_key=api_key or "EMPTY", timeout=180)
-            if not model:
-                try:
-                    model = client.models.list().data[0].id
-                except Exception:
-                    model = "gpt-4o-mini"
-        else:
-            model = model or "dummy"
+            model = OpenAI(base_url=endpoint, api_key=api_key, timeout=30).models.list().data[0].id
+        except Exception as exc:
+            return {"env_id": env_id, "error": f"could not determine a model from {endpoint}: {exc}"}
 
-        samples = []
-        latencies: list[float] = []
-        for i, row in enumerate(rows):
-            messages = _chat_messages(row["prompt"])
-            rollouts = []
-            for j in range(k):
-                if dummy:
-                    text, dt, err = f"(dummy rollout {j} for task {i})", 0.0, None
-                elif messages is None:
-                    text, dt, err = "", 0.0, "prompt is not chat messages"
-                else:
-                    t0 = time.perf_counter()
-                    try:
-                        resp = client.chat.completions.create(
-                            model=model, messages=messages,
-                            max_tokens=max_tokens, temperature=0.8,
-                        )
-                        text = resp.choices[0].message.content or ""
-                        err = None
-                    except Exception as exc:
-                        text, err = "", f"{type(exc).__name__}: {exc}"[:200]
-                    dt = time.perf_counter() - t0
-                    latencies.append(dt)
-                try:
-                    reward, _ = handle.score(text, row["prompt"], row["answer"], row["info"], row.get("raw"))
-                except ScoringError:
-                    reward = None
-                rollouts.append({"text": text, "latency_s": round(dt, 4), "reward": reward, "error": err})
-            samples.append(
-                {
-                    "index": i,
-                    "prompt": row["prompt"],
-                    "answer": row["answer"],
-                    "rollouts": rollouts,
-                }
-            )
+    import glob
+    import subprocess
+    import sys
+    import tempfile
 
-        timing = {}
-        if latencies:
-            s = sorted(latencies)
-            timing = {
-                "calls": len(s),
-                "mean_s": round(sum(s) / len(s), 3),
-                "p50_s": round(s[len(s) // 2], 3),
-                "p90_s": round(s[min(len(s) - 1, int(0.9 * len(s)))], 3),
-                "max_s": round(s[-1], 3),
-                "total_s": round(sum(s), 3),
-            }
-        out = {
-            "env_id": env_id, "model": model, "endpoint": endpoint or "api.openai.com",
-            "dummy": dummy, "n_samples": len(samples), "k": k,
-            "timing": timing, "samples": samples,
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    scratch = Path(tempfile.mkdtemp(prefix="vfeval_", dir=CACHE_DIR))
+    key_var = "RLENV_AUDIT_VLLM_KEY"
+    sub_env = dict(os.environ, **{key_var: api_key})
+    # Passing both -b and -k makes vf-eval use the endpoint directly (no endpoints.toml).
+    cmd = [
+        sys.executable, "-m", "verifiers.scripts.eval", env_id,
+        "-m", model, "-b", endpoint, "-k", key_var,
+        "-n", str(n_samples), "-r", str(k), "-c", str(max_concurrent),
+        "-s", "-o", str(scratch), "--disable-tui",
+    ]
+    if max_tokens is not None:
+        cmd += ["-t", str(max_tokens)]
+    if temperature is not None:
+        cmd += ["-T", str(temperature)]
+
+    try:
+        proc = subprocess.run(cmd, env=sub_env, capture_output=True, text=True, timeout=3600)
+    except subprocess.TimeoutExpired:
+        shutil.rmtree(scratch, ignore_errors=True)
+        return {"env_id": env_id, "error": "vf-eval timed out after 3600s"}
+
+    matches = sorted(glob.glob(str(scratch / "**" / "results.jsonl"), recursive=True))
+    if not matches:
+        tail = (proc.stderr or proc.stdout or "").strip()[-1000:]
+        shutil.rmtree(scratch, ignore_errors=True)
+        return {"env_id": env_id,
+                "error": f"vf-eval produced no results (exit {proc.returncode}): {tail}"}
+
+    run_dir = Path(matches[-1]).parent
+    rows = [json.loads(line) for line in (run_dir / "results.jsonl").read_text().splitlines() if line.strip()]
+    metadata: dict[str, Any] = {}
+    meta_path = run_dir / "metadata.json"
+    if meta_path.exists():
+        try:
+            metadata = json.loads(meta_path.read_text())
+        except Exception:
+            metadata = {}
+
+    from collections import OrderedDict
+
+    by_example: "OrderedDict[Any, dict]" = OrderedDict()
+    latencies: list[float] = []
+    for r in rows:
+        ex = r.get("example_id", 0)
+        dt = _timing_value(r.get("timing"), "total")
+        if dt is None:
+            dt = _timing_value(r.get("timing"), "generation")
+        if dt is not None:
+            latencies.append(dt)
+        err = r.get("error")
+        if isinstance(err, dict):
+            err = err.get("error")
+        rollout = {
+            "text": _completion_text(r.get("completion")),
+            "latency_s": round(dt, 4) if dt is not None else None,
+            "reward": r.get("reward"),
+            "error": err,
+            "truncated": r.get("is_truncated"),
+            "stop_reason": r.get("stop_condition"),
+            "output_tokens": (r.get("token_usage") or {}).get("output_tokens"),
         }
+        sample = by_example.setdefault(
+            ex, {"index": ex, "prompt": r.get("prompt"), "answer": r.get("answer", ""), "rollouts": []}
+        )
+        sample["rollouts"].append(rollout)
 
-        path = Path(cache_path) if cache_path else CACHE_DIR / f"rollouts_{env_id.replace('/', '_')}.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(out, indent=2))
-        out["cache_path"] = str(path)
-        return out
-    finally:
-        handle.teardown()
+    out = {
+        "env_id": env_id, "model": model, "endpoint": endpoint,
+        "engine": "vf-eval", "dummy": False,
+        "n_samples": len(by_example), "k": k, "max_concurrent": max_concurrent,
+        "timing": _percentiles(latencies),
+        "metrics": {key: metadata[key]
+                    for key in ("avg_reward", "avg_error", "pass_at_k", "pass_all_k")
+                    if key in metadata},
+        "samples": list(by_example.values()),
+    }
+    cache.write_text(json.dumps(out, indent=2))
+    out["cache_path"] = str(cache)
+    shutil.rmtree(scratch, ignore_errors=True)
+    return out
 
 
 # ------------------------------------------------------------------- scorecard

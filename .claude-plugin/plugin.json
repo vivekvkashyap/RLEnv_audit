@@ -1,7 +1,7 @@
 {
   "name": "env-audit",
   "description": "Audit a Prime Intellect / verifiers RL environment before training on it. Six judgment-based checks (integrity, problem-statement alignment, reward design, latency, rollout quality, contamination) run by the agent, producing a scorecard with scores and written justifications.",
-  "version": "0.3.6",
+  "version": "0.4.0",
   "author": { "name": "Vivek", "email": "vivekvkashyap10@gmail.com" },
   "homepage": "https://github.com/vivekvkashyap/RLEnv_audit",
   "repository": "https://github.com/vivekvkashyap/RLEnv_audit",
