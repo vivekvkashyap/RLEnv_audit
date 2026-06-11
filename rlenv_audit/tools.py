@@ -286,7 +286,7 @@ def render_scorecard(data: dict) -> None:
 
     card = build_scorecard(data)
     console = Console()
-    table = Table(title=f"env_audit · {card['env_id']}", title_style="bold")
+    table = Table(title=f"rlenv_audit · {card['env_id']}", title_style="bold")
     table.add_column("check", style="bold", no_wrap=True)
     table.add_column("status", no_wrap=True)
     table.add_column("score", justify="right", no_wrap=True)

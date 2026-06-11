@@ -1,14 +1,14 @@
-# env_audit
+# rlenv_audit
 
 [![PyPI](https://img.shields.io/pypi/v/rlenv-audit?color=blue)](https://pypi.org/project/rlenv-audit/)
 [![Python versions](https://img.shields.io/pypi/pyversions/rlenv-audit)](https://pypi.org/project/rlenv-audit/)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
-**env_audit** audits [`verifiers`](https://github.com/PrimeIntellect-ai/verifiers)
+**rlenv_audit** audits [`verifiers`](https://github.com/PrimeIntellect-ai/verifiers)
 RL environments from the Prime Intellect Hub *before* you spend GPU hours
 training on them. RL environments are treated like training data, but nobody
 tests them first: a broken reward function doesn't crash, it silently teaches
-the policy garbage. env_audit catches that. Point an agent (Claude Code / Codex)
+the policy garbage. rlenv_audit catches that. Point an agent (Claude Code / Codex)
 at an environment and it runs **six judgment-based checks** (each a skill file
 the agent executes, backed by a small deterministic tool layer) and returns a
 scorecard with a score out of 10, a status, and a written justification per
@@ -43,7 +43,7 @@ The scorecard, one row per check, each scored **out of 10**, plus one final
 score and written feedback:
 
 ```
-                       env_audit · primeintellect/gsm8k
+                       rlenv_audit · primeintellect/gsm8k
 ┃ check             ┃ status ┃ score ┃ justification                           ┃
 │ integrity         │ PASS   │   9.5 │ loads, reward callable, well-formed     │
 │ problem_alignment │ PASS   │   9.0 │ dataset/reward match the stated goal    │
@@ -86,7 +86,7 @@ correct-but-unformatted output early in training.
 | 5 | **rollout quality** | model endpoint | Reads actual rollouts and judges whether the env is set up well in practice: system prompt right, outputs sensible, obvious env-caused failure modes. |
 | 6 | **contamination** | HF dataset ids | Compares the env's dataset against the HuggingFace datasets *you* name (e.g. `openai/gsm8k`) and flags matching / near-matching instances. **N/A** (carries no weight) if you don't provide any. |
 
-**Shared rollouts (checks 4 & 5).** Both need a model, so env_audit runs
+**Shared rollouts (checks 4 & 5).** Both need a model, so rlenv_audit runs
 rollouts **once** (8 rollouts over ~20 samples, scored + timed, cached) and both
 checks read that single cache. No endpoint → 4 & 5 are **N/A**.
 
