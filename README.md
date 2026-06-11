@@ -22,16 +22,20 @@ uvx rlenv-audit install-skills
 pip install rlenv-audit && rlenv-audit install-skills
 ```
 
-Then ask your agent (Claude Code / Codex), giving the **full environment id**
-(`account/name` — bare names like `gsm8k` are ambiguous on the Hub), your
-**problem statement**, and optionally a **model endpoint** and the **HuggingFace
-datasets** to check contamination against:
+Then ask your agent, giving the **full environment id** (`account/name` — bare
+names like `gsm8k` are ambiguous on the Hub), your **problem statement**, and
+optionally a **model endpoint** and the **HuggingFace datasets** to check
+contamination against:
+
+**prompt**
 
 ```text
 Audit primeintellect/gsm8k. I'm trying to train a grade-school math solver.
 Use my vLLM endpoint at http://localhost:8000/v1, model Qwen2.5-7B.
 Check contamination against openai/gsm8k.
 ```
+
+*(in Claude Code or Codex)*
 
 ## Output
 
