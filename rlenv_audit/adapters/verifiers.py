@@ -29,6 +29,10 @@ class ScoringError(Exception):
     """Raised when a completion cannot be scored through the env's rubric."""
 
 
+class DatasetLoadError(Exception):
+    """Raised when an environment dataset exists but cannot be loaded."""
+
+
 def load_handle(env_id: str, env_args: dict[str, Any] | None = None) -> "EnvHandle":
     """Load a verifiers environment by id and wrap it in an ``EnvHandle``.
 
@@ -140,7 +144,10 @@ class EnvHandle:
         sp = getattr(self.env, "system_prompt", None)
         if isinstance(sp, str) and sp.strip():
             return sp
-        rows = self.dataset(n=1)
+        try:
+            rows = self.dataset(n=1)
+        except DatasetLoadError:
+            return None
         if rows and isinstance(rows[0].get("prompt"), list):
             for msg in rows[0]["prompt"]:
                 if isinstance(msg, dict) and msg.get("role") == "system":
@@ -236,12 +243,15 @@ class EnvHandle:
         ``[]`` only if the env exposes no usable dataset at all.
         """
 
+        errors: dict[str, str] = {}
+
         def _load(which: str):
             try:
                 if which == "eval":
                     return self.env.get_eval_dataset(n=n)
                 return self.env.get_dataset(n=n)
-            except Exception:
+            except Exception as exc:
+                errors[which] = f"{type(exc).__name__}: {exc}"
                 return None
 
         order = ["eval", "train"] if split == "eval" else ["train", "eval"]
@@ -251,6 +261,11 @@ class EnvHandle:
             if ds is not None and len(ds) > 0:
                 break
         if ds is None or len(ds) == 0:
+            if errors:
+                detail = "; ".join(f"{split}: {err}" for split, err in errors.items())
+                raise DatasetLoadError(
+                    f"could not load dataset for environment '{self.env_id}': {detail}"
+                )
             return []
 
         rows: list[dict[str, Any]] = []

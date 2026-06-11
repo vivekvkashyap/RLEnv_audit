@@ -12,6 +12,9 @@ def test_inspect_gsm8k():
     if not info.get("loaded"):
         import pytest
         pytest.skip(f"gsm8k not installed: {info.get('error')}")
+    if info.get("dataset_error"):
+        import pytest
+        pytest.skip(f"gsm8k dataset unavailable: {info['dataset_error']}")
     assert info["env_type"] == "SingleTurnEnv"
     assert any(f["name"] == "correct_answer" and "def" in f["source"] for f in info["reward_funcs"])
     assert info["dataset_size"]["train"]
@@ -24,6 +27,9 @@ def test_score_discriminates():
     if not info.get("loaded"):
         import pytest
         pytest.skip("gsm8k not installed")
+    if info.get("dataset_error"):
+        import pytest
+        pytest.skip(f"gsm8k dataset unavailable: {info['dataset_error']}")
     ans = info["sample"][0]["answer"]
     out = score_completions("gsm8k", [
         {"prompt_index": 0, "label": "correct", "text": f"\\boxed{{{ans}}}"},

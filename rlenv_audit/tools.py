@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from rlenv_audit.adapters.verifiers import ScoringError, load_handle
+from rlenv_audit.adapters.verifiers import DatasetLoadError, ScoringError, load_handle
 
 CACHE_DIR = Path(os.environ.get("RLENV_AUDIT_CACHE", ".rlenv_audit_cache"))
 
@@ -51,7 +51,12 @@ def inspect_env(env_id: str, n: int = 20) -> dict[str, Any]:
             }
             for i, nm in enumerate(names)
         ]
-        rows = handle.dataset(n=n)
+        dataset_error = None
+        try:
+            rows = handle.dataset(n=n)
+        except DatasetLoadError as exc:
+            rows = []
+            dataset_error = str(exc)
         sample = [
             {
                 "index": i,
@@ -65,7 +70,7 @@ def inspect_env(env_id: str, n: int = 20) -> dict[str, Any]:
             }
             for i, r in enumerate(rows)
         ]
-        return {
+        result = {
             "env_id": env_id,
             "loaded": True,
             "env_type": type(handle.env).__name__,
@@ -77,6 +82,9 @@ def inspect_env(env_id: str, n: int = 20) -> dict[str, Any]:
             "sample_size": len(sample),
             "sample": sample,
         }
+        if dataset_error:
+            result["dataset_error"] = dataset_error
+        return result
     finally:
         handle.teardown()
 
@@ -93,7 +101,10 @@ def score_completions(env_id: str, completions: list[dict]) -> dict[str, Any]:
     handle = load_handle(env_id)
     try:
         max_idx = max((int(c.get("prompt_index", 0)) for c in completions), default=0)
-        rows = handle.dataset(n=max_idx + 1)
+        try:
+            rows = handle.dataset(n=max_idx + 1)
+        except DatasetLoadError as exc:
+            return {"env_id": env_id, "error": str(exc)}
         if not rows:
             return {"env_id": env_id, "error": "environment exposes no dataset"}
         results = []
@@ -149,7 +160,10 @@ def run_rollouts(
     """
     handle = load_handle(env_id)
     try:
-        rows = handle.dataset(n=n_samples)
+        try:
+            rows = handle.dataset(n=n_samples)
+        except DatasetLoadError as exc:
+            return {"env_id": env_id, "error": str(exc)}
         if not rows:
             return {"env_id": env_id, "error": "environment exposes no dataset"}
 

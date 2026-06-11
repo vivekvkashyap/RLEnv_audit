@@ -21,7 +21,7 @@ def main() -> None:
 
     handle = load_handle(payload["env_id"], payload.get("env_args") or {})
     task = payload["task"]
-    columns = task.get("columns") or {}
+    columns = task.get("columns") or task.get("raw") or {}
     results: dict[str, dict] = {}
     for cheat in payload["cheats"]:
         try:
