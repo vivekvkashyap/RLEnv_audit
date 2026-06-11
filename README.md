@@ -46,10 +46,18 @@ Checks 1, 2, 3, 6 need no endpoint. No endpoint → 4 & 5 are **N/A**.
 /plugin install env-audit@rlenv-audit
 ```
 
-**Any agent — via pip/uv:**
+**Any agent — via uv/pip:**
 
 ```bash
-uvx rlenv-audit install-skills    # or: pip install rlenv-audit && rlenv-audit install-skills
+uvx rlenv-audit install-skills          # or: pip install rlenv-audit && rlenv-audit install-skills
+uv tool install rlenv-audit             # keep the CLI around permanently
+uv add rlenv-audit                      # use the tools as a library in your project
+```
+
+Until the package is on PyPI, use the git URL form:
+
+```bash
+uvx --from git+https://github.com/vivekvkashyap/RLEnv_audit.git rlenv-audit install-skills
 ```
 
 Both routes install the seven skill files into your agent. Everything else is
