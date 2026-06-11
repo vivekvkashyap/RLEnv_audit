@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "rlenv-audit"
-version = "0.2.0"
+version = "0.3.0"
 description = "env_audit — a skill-based auditing system for Prime Intellect `verifiers` RL environments"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -36,3 +36,8 @@ Repository = "https://github.com/vivekvkashyap/RLEnv_audit"
 
 [tool.hatch.build.targets.wheel]
 packages = ["rlenv_audit"]
+
+# Ship the skill files inside the wheel so `rlenv-audit install-skills` can
+# copy them into ~/.claude/skills without a git checkout.
+[tool.hatch.build.targets.wheel.force-include]
+"skills" = "rlenv_audit/skills"

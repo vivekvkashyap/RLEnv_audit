@@ -56,6 +56,18 @@ def test_build_scorecard_error_grades_fail():
     assert card["rating"] == 100         # only the check that produced a score
 
 
+def test_install_skills_copies_bundled_skills(tmp_path):
+    from click.testing import CliRunner
+
+    from rlenv_audit.cli import main
+
+    result = CliRunner().invoke(main, ["install-skills", "--target", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    for name in ("env-audit", "integrity", "problem-alignment", "reward-design",
+                 "latency", "rollout-quality", "contamination"):
+        assert (tmp_path / name / "SKILL.md").exists(), f"{name} not installed"
+
+
 def test_all_six_check_skills_present_and_valid():
     expected = {"env-audit", "integrity", "problem-alignment", "reward-design",
                 "latency", "rollout-quality", "contamination"}

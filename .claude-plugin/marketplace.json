@@ -1,0 +1,11 @@
+{
+  "name": "rlenv-audit",
+  "owner": { "name": "Vivek", "email": "vivekvkashyap10@gmail.com" },
+  "plugins": [
+    {
+      "name": "env-audit",
+      "source": "./",
+      "description": "Audit a verifiers RL environment before training on it: six agent-run checks, one scorecard. Ask: \"Audit primeintellect/gsm8k\"."
+    }
+  ]
+}

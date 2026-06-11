@@ -40,6 +40,10 @@ tool layer (`rlenv-audit inspect / score / rollouts / scorecard`). See
   scorecard), rewrite `cli.py` around the four tools, add the six check skills +
   the `env-audit` orchestrator, rewrite README/DESIGN, port `scripts/survey.py`
   to the inspect tool, new `tests/test_tools.py`.
+- [x] **13. feat(distribution): one-command install** — `.claude-plugin/`
+  manifests (repo doubles as a Claude Code plugin marketplace), skills bundled
+  into the wheel, `rlenv-audit install-skills`, self-bootstrapping setup step in
+  the orchestrator skill (pip-installs the tools + `vf-install`s the env).
 
 ## Guardrails (apply throughout)
 

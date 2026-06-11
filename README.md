@@ -37,10 +37,29 @@ which endpoint/model to use (or "dummy"), runs rollouts **once** (8 rollouts ove
 ~20 samples, scored + timed, cached), and both checks read that single cache.
 Checks 1, 2, 3, 6 need no endpoint. No endpoint → 4 & 5 are **N/A**.
 
+## Install (one command)
+
+**Claude Code — as a plugin:**
+
+```
+/plugin marketplace add vivekvkashyap/RLEnv_audit
+/plugin install env-audit@rlenv-audit
+```
+
+**Any agent — via pip/uv:**
+
+```bash
+uvx rlenv-audit install-skills    # or: pip install rlenv-audit && rlenv-audit install-skills
+```
+
+Both routes install the seven skill files into your agent. Everything else is
+self-bootstrapping: on the first audit the skill installs the `rlenv-audit`
+tools (if missing) and `vf-install`s the environment itself.
+
 ## Usage
 
-env_audit is run **by an agent**. With the skills available to Claude Code /
-Codex, point it at an environment:
+env_audit is run **by an agent**. With the skills installed, point it at an
+environment:
 
 > "Audit the `gsm8k` environment." &nbsp; / &nbsp; "Audit `primeintellect/aime2024`
 > — I'm trying to train a competition-math solver — using my vLLM at
@@ -61,16 +80,18 @@ scorecard:
 overall: WARN   rating: B (81/100)
 ```
 
-### Install the skills
+### From a checkout (development)
 
 ```bash
-pip install -e .              # installs the rlenv-audit / env-audit tools
-vf-install primeintellect/gsm8k   # install an environment to audit
-cp -r skills/* ~/.claude/skills/  # make the skills available to Claude Code
+pip install -e .                    # the rlenv-audit / env-audit tools
+rlenv-audit install-skills          # copy skills/ into ~/.claude/skills
+vf-install primeintellect/gsm8k     # install an environment to audit by hand
 ```
 
 > Most Hub envs require **Python 3.11+**; `verifiers==0.1.14` (pinned) also runs
-> on 3.10 for old-CUDA boxes, where you can install the older example envs.
+> on 3.10 for old-CUDA boxes, where you can install the older example envs. The
+> env must be installed into the **same Python environment** as `rlenv-audit` —
+> verifiers loads environments by importing them.
 
 ### The tools (what the skills call)
 
@@ -95,11 +116,12 @@ floor, partial credit, bounds, anti-hacking, parser contract, contamination.
 
 ```
 skills/                 the six checks + the env-audit orchestrator (SKILL.md each)
+.claude-plugin/         plugin + marketplace manifests (repo doubles as a Claude Code plugin)
 rlenv_audit/
   adapters/verifiers.py EnvHandle — the only code that touches verifiers
   tools.py              inspect / score / rollouts / scorecard
   sandbox.py            Docker isolation (for executing risky completions)
-  cli.py                the rlenv-audit / env-audit CLI
+  cli.py                the rlenv-audit / env-audit CLI (+ install-skills)
 REWARD_DESIGN.md        the design guide the judgment checks cite
 ```
 

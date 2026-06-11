@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 
 import click
 
@@ -99,6 +100,46 @@ def scorecard(results_json: str, as_json: bool) -> None:
         render_scorecard(data)
     if build_scorecard(data)["grade"] == "FAIL":
         sys.exit(1)
+
+
+def _bundled_skills_dir() -> Path | None:
+    """Locate the skill files shipped with this installation: inside the package
+    for a wheel install (force-included at build time), beside it for an
+    editable install / git checkout."""
+    here = Path(__file__).resolve()
+    for candidate in (here.parent / "skills", here.parents[1] / "skills"):
+        if candidate.is_dir() and any(candidate.glob("*/SKILL.md")):
+            return candidate
+    return None
+
+
+@main.command("install-skills")
+@click.option(
+    "--target", default=None,
+    help="directory to install the skills into (default: ~/.claude/skills).",
+)
+def install_skills(target: str | None) -> None:
+    """Copy the bundled audit skills (the six checks + the env-audit
+    orchestrator) into the agent's skills directory, so asking Claude Code to
+    "audit <env>" just works."""
+    import shutil
+
+    src = _bundled_skills_dir()
+    if src is None:
+        raise click.ClickException(
+            "bundled skills not found in this installation — "
+            "reinstall rlenv-audit or run from a git checkout"
+        )
+    dst_root = Path(target).expanduser() if target else Path.home() / ".claude" / "skills"
+    dst_root.mkdir(parents=True, exist_ok=True)
+    installed = []
+    for skill_dir in sorted(p.parent for p in src.glob("*/SKILL.md")):
+        shutil.copytree(skill_dir, dst_root / skill_dir.name, dirs_exist_ok=True)
+        installed.append(skill_dir.name)
+    click.echo(f"installed {len(installed)} skills to {dst_root}:")
+    for name in installed:
+        click.echo(f"  - {name}")
+    click.echo('\nNow ask your agent: "Audit <env-id>" (e.g. primeintellect/gsm8k).')
 
 
 if __name__ == "__main__":  # pragma: no cover

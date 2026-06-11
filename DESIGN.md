@@ -118,7 +118,22 @@ Every score must be grounded in observed evidence — tool output, completions t
 agent wrote, rollouts it read — never a vibe. `REWARD_DESIGN.md` is the rubric the
 reward-design and rollout-quality checks judge against.
 
-## 8. Honest scope
+## 8. Distribution
+
+One repo, published two ways, so a user never clones it:
+
+- **Claude Code plugin** — `.claude-plugin/marketplace.json` makes the repo a
+  one-plugin marketplace; `/plugin install env-audit@rlenv-audit` ships the
+  skill files straight from GitHub.
+- **PyPI wheel** — the wheel force-includes `skills/` as package data;
+  `rlenv-audit install-skills` (or `uvx rlenv-audit install-skills`) copies them
+  into `~/.claude/skills/`.
+
+The skills carry no other setup burden: the orchestrator's bootstrap step has
+the agent pip-install the tools and `vf-install` the target environment itself
+on first run. The user types one install command once, then just "audit <env>".
+
+## 9. Honest scope
 
 Six checks, one format (`verifiers`), agent-driven. Determinism lives in the
 tools; judgment lives in the skills. No plugin system, no config framework — the

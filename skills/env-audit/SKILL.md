@@ -15,30 +15,49 @@ a **score (0–100), a status, and a one-line justification**.
 
 Ask the user (or take from their request) and confirm:
 
-1. **env id** (required) — e.g. `gsm8k`, `primeintellect/aime2024`. It must be
-   installed (`vf-install <env>` or `vf-install <env> -r`).
+1. **env id** (required) — e.g. `gsm8k`, `primeintellect/aime2024`.
 2. **problem statement** (optional) — what the user says this env is meant to
    test/train. Enables check 2; if absent, check 2 is **N/A**.
 3. **model endpoint** (optional) — an OpenAI-compatible endpoint + model name, or
-   "dummy", or none. Enables checks 4 & 5; if absent, both are **N/A**.
+   "dummy", or none. Enables checks 4 & 5; if absent, both are **N/A**. If the
+   user didn't mention one, ask once: "Do you have a model endpoint for the
+   rollout checks, or should I skip them?"
 
-## 1. Load the environment once
+## 1. Set up (self-bootstrapping)
+
+Do whatever setup is missing — the user shouldn't have to prepare anything:
+
+1. **Tools.** If `rlenv-audit` is not on PATH, install it:
+   `pip install rlenv-audit` (use the active venv if there is one; fall back to
+   `pip install git+https://github.com/vivekvkashyap/RLEnv_audit.git` if the
+   PyPI package is unavailable). This also brings in `verifiers` and its
+   `vf-install` command.
+2. **The environment.** Try the inspect in step 2; if it fails with a
+   load/import error, install the env and retry:
+   `vf-install <env>` for Hub envs (e.g. `primeintellect/gsm8k`), or
+   `vf-install <env> -r` for the verifiers example envs. Note: most Hub envs
+   need Python ≥ 3.11. The env must land in the **same Python environment** as
+   `rlenv-audit` (verifiers loads envs by importing them).
+
+## 2. Load the environment once
 
 Run `rlenv-audit inspect <env> -n 20 --out /tmp/envaudit_inspect.json` and read
-it. If `loaded` is false, the **integrity** check fails immediately — report that
-as the scorecard and stop (the other checks can't run).
+it. If `loaded` is false (after the bootstrap above), the **integrity** check
+fails immediately — report that as the scorecard and stop (the other checks
+can't run).
 
-## 2. Run the no-endpoint checks (1, 2, 3, 6)
+## 3. Run the no-endpoint checks (1, 2, 3, 6)
 
-These need no model — your own judgement plus the tools. Run each by following its
-skill, in order, and collect `{name, status, score, justification}`:
+These need no model — your own judgement plus the tools. Run each by following
+its skill (installed alongside this one; in the repo they live under `skills/`),
+in order, and collect `{name, status, score, justification}`:
 
-- `skills/integrity/SKILL.md`
-- `skills/problem-alignment/SKILL.md` (N/A if no problem statement)
-- `skills/reward-design/SKILL.md`
-- `skills/contamination/SKILL.md`
+- `env-audit-integrity`
+- `env-audit-problem-alignment` (N/A if no problem statement)
+- `env-audit-reward-design`
+- `env-audit-contamination`
 
-## 3. Shared rollouts, then the endpoint checks (4, 5)
+## 4. Shared rollouts, then the endpoint checks (4, 5)
 
 If the user gave an endpoint (or chose "dummy"):
 
@@ -46,12 +65,12 @@ If the user gave an endpoint (or chose "dummy"):
    `rlenv-audit rollouts <env> --endpoint <url> --model <name> -n 20 -k 8 --out /tmp/envaudit_rollouts.json`
    (or `--dummy` for a no-endpoint dry run). Eight rollouts over ~20 samples,
    scored and timed, cached to that file.
-2. Run `skills/latency/SKILL.md` and `skills/rollout-quality/SKILL.md`, both
+2. Run the `env-audit-latency` and `env-audit-rollout-quality` skills, both
    reading that **single cache** — do not roll out again.
 
 If there is no endpoint, mark **latency** and **rollout_quality** as `N/A`.
 
-## 4. Assemble the scorecard
+## 5. Assemble the scorecard
 
 Write all six results to `/tmp/envaudit_results.json`:
 
