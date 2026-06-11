@@ -43,7 +43,7 @@ The scorecard — one row per check, each scored **out of 10** — plus one fina
 score and written feedback:
 
 ```
-                               env_audit · gsm8k
+                       env_audit · primeintellect/gsm8k
 ┃ check             ┃ status ┃ score ┃ justification                           ┃
 │ integrity         │ PASS   │   9.5 │ loads, reward callable, well-formed     │
 │ problem_alignment │ PASS   │   9.0 │ dataset/reward match the stated goal    │
