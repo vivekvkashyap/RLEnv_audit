@@ -37,32 +37,39 @@ which endpoint/model to use (or "dummy"), runs rollouts **once** (8 rollouts ove
 ~20 samples, scored + timed, cached), and both checks read that single cache.
 Checks 1, 2, 3, 6 need no endpoint. No endpoint → 4 & 5 are **N/A**.
 
-## Install (one command)
+## Install (pick any ONE of these)
 
-**Claude Code — as a plugin:**
+Every route ends the same way — the seven skill files installed for your agent —
+so choose whichever fits and ignore the rest.
+
+**Option A — Claude Code plugin** (no terminal needed):
 
 ```
 /plugin marketplace add vivekvkashyap/RLEnv_audit
 /plugin install env-audit@rlenv-audit
 ```
 
-**Any agent — via uv/pip:**
-
-```bash
-uvx rlenv-audit install-skills          # or: pip install rlenv-audit && rlenv-audit install-skills
-uv tool install rlenv-audit             # keep the CLI around permanently
-uv add rlenv-audit                      # use the tools as a library in your project
-```
-
-Until the package is on PyPI, use the git URL form:
+**Option B — uv** (works today, straight from GitHub):
 
 ```bash
 uvx --from git+https://github.com/vivekvkashyap/RLEnv_audit.git rlenv-audit install-skills
 ```
 
-Both routes install the seven skill files into your agent. Everything else is
-self-bootstrapping: on the first audit the skill installs the `rlenv-audit`
-tools (if missing) and `vf-install`s the environment itself.
+(once on PyPI this shortens to `uvx rlenv-audit install-skills`)
+
+**Option C — pip:**
+
+```bash
+pip install git+https://github.com/vivekvkashyap/RLEnv_audit.git && rlenv-audit install-skills
+```
+
+That's it. Everything else is self-bootstrapping: on the first audit the skill
+installs the `rlenv-audit` tools (if missing) and `vf-install`s the environment
+itself.
+
+> Building a Python project *around* the tools instead? `uv add
+> git+https://github.com/vivekvkashyap/RLEnv_audit.git` and import
+> `rlenv_audit` like any library.
 
 ## Usage
 
