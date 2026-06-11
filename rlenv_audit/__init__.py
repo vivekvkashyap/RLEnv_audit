@@ -1,17 +1,16 @@
-"""RLEnv_audit — pytest for RL environments.
+"""env_audit — a skill-based auditing system for RL environments.
 
-Library-first; the CLI is a thin wrapper over ``audit()``:
+The audit *checks* are skill files (``skills/``) executed by an agent (Claude
+Code / Codex). This package is the deterministic tool layer those skills call:
 
-    import rlenv_audit
-    scorecard = rlenv_audit.audit("gsm8k")     # or pass a loaded Environment
-    print(scorecard.grade)
-    scorecard.write_json("report.json")
+    from rlenv_audit import load_handle
+    from rlenv_audit.tools import inspect_env, score_completions, run_rollouts
+
+The same tools are exposed on the ``env_audit`` / ``rlenv-audit`` CLI.
 """
 
-from rlenv_audit.checks.base import CheckResult, CheckStatus
-from rlenv_audit.core import audit
-from rlenv_audit.report import Scorecard
+from rlenv_audit.adapters.verifiers import EnvHandle, EnvLoadError, load_handle
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
-__all__ = ["audit", "CheckResult", "CheckStatus", "Scorecard", "__version__"]
+__all__ = ["load_handle", "EnvHandle", "EnvLoadError", "__version__"]

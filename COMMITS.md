@@ -24,8 +24,22 @@ proven.
 - [x] **9. feat(distribution)** — GPU/vLLM check; SKIP-degrading when absent.
 - [x] **10. docs+tests** — README, sample scorecard, what each check means; real
   tests in `tests/`.
-- [ ] **11. push** — `git push -u origin main` after confirming the remote +
+- [x] **11. push** — `git push -u origin main` after confirming the remote +
   stored credentials work.
+
+## v0.2 — the skill-based rewrite
+
+Everything above built the v0.1 script battery. v0.2 scrapped the deterministic
+checks: the audits are judgment-heavy, so each check became a **skill file**
+(`skills/<check>/SKILL.md`) executed by an agent, leaning on a thin deterministic
+tool layer (`rlenv-audit inspect / score / rollouts / scorecard`). See
+`DESIGN.md` for the current architecture.
+
+- [x] **12. feat!: skill-based audit** — delete `checks/`, `core.py`,
+  `report.py`, `skills.py`; add `tools.py` (inspect / score / rollouts /
+  scorecard), rewrite `cli.py` around the four tools, add the six check skills +
+  the `env-audit` orchestrator, rewrite README/DESIGN, port `scripts/survey.py`
+  to the inspect tool, new `tests/test_tools.py`.
 
 ## Guardrails (apply throughout)
 

@@ -1,10 +1,11 @@
-"""Batch-audit a list of Hub environments and aggregate the results.
+"""Batch-inspect a list of Hub environments and aggregate the results.
 
-Each env is installed and audited in an isolated subprocess (with timeouts) so a
-single hang, crash, or dependency blow-up can't take down the whole run. Produces
-a survey.json + a printed summary table. This is the harness behind the survey
-("I audited N environments; X failed determinism, Y are exploitable, …") and the
-fastest way to surface env-variability bugs in the checks.
+The full audit is agent-driven (skills), so the deterministic part a script can
+batch is the tool layer: install each env and run `rlenv-audit inspect` in an
+isolated subprocess (with timeouts) so a single hang, crash, or dependency
+blow-up can't take down the whole run. Produces survey.json + a printed summary
+("N envs: X load cleanly, Y fail to load, ...") — the fastest way to surface
+env-variability bugs in the adapter/tools before pointing an agent at an env.
 
 Usage:
     python scripts/survey.py [env_id ...]          # defaults to CURATED below
@@ -35,7 +36,7 @@ CURATED = [
 ]
 
 INSTALL_TIMEOUT = 240
-AUDIT_TIMEOUT = 360
+INSPECT_TIMEOUT = 180
 
 
 def run(cmd, timeout):
@@ -75,44 +76,49 @@ def main(argv):
         out = os.path.join(outdir, f"{name}.json")
         if os.path.exists(out):
             os.remove(out)
-        # Skip the hardware/endpoint-dependent checks so the batch stays CPU-only.
         code, so, se = run(
-            [audit, "run", name, "--skip", "distribution,rollouts",
-             "--json", out, "--no-report"],
-            AUDIT_TIMEOUT,
+            [audit, "inspect", name, "-n", "5", "--out", out],
+            INSPECT_TIMEOUT,
         )
         elapsed = round(time.time() - t0, 1)
 
         if os.path.exists(out):
-            rep = json.load(open(out))
-            checks = {c["check_name"]: c["status"] for c in rep["checks"]}
-            row = {"env": name, "status": "audited", "grade": rep["grade"],
-                   "checks": checks, "elapsed_s": elapsed}
-            # surface anything interesting
-            row["findings"] = {
-                c["check_name"]: c["summary"]
-                for c in rep["checks"] if c["status"] in ("FAIL", "WARN")
-            }
+            info = json.load(open(out))
+            if info.get("loaded"):
+                row = {
+                    "env": name, "status": "loaded",
+                    "env_type": info.get("env_type"),
+                    "reward_funcs": [f["name"] for f in info.get("reward_funcs", [])],
+                    "dataset_size": info.get("dataset_size"),
+                    "has_system_prompt": bool(info.get("system_prompt")),
+                    "n_samples": len(info.get("sample", [])),
+                    "elapsed_s": elapsed,
+                }
+            else:
+                row = {"env": name, "status": "load_failed",
+                       "reason": str(info.get("error", ""))[:200], "elapsed_s": elapsed}
         else:
             reason = (se or so).strip().splitlines()
-            row = {"env": name, "status": "load_failed", "grade": None,
+            row = {"env": name, "status": "inspect_crashed",
                    "reason": (reason[-1][:200] if reason else "unknown"), "elapsed_s": elapsed}
         results.append(row)
-        print(f"  -> {row['status']} grade={row.get('grade')} ({elapsed}s)", flush=True)
+        print(f"  -> {row['status']} ({elapsed}s)", flush=True)
 
     summary = {"n": len(results), "results": results}
     with open(os.path.join(ROOT, "survey.json"), "w") as f:
         json.dump(summary, f, indent=2)
 
     print("\n\n================ SURVEY SUMMARY ================")
-    print(f"{'env':24s} {'status':12s} {'grade':6s} checks")
+    print(f"{'env':24s} {'status':16s} detail")
     for r in results:
-        if r["status"] == "audited":
-            cks = " ".join(f"{k[:4]}:{v}" for k, v in r["checks"].items())
-            print(f"{r['env']:24s} {'audited':12s} {str(r['grade']):6s} {cks}")
+        if r["status"] == "loaded":
+            detail = (f"{r['env_type']} rewards={','.join(r['reward_funcs'])[:40]} "
+                      f"ds={r['dataset_size']}")
         else:
-            print(f"{r['env']:24s} {r['status']:12s} {'-':6s} {r.get('reason','')[:60]}")
-    print("\nsurvey.json written.")
+            detail = r.get("reason", "")[:70]
+        print(f"{r['env']:24s} {r['status']:16s} {detail}")
+    n_ok = sum(1 for r in results if r["status"] == "loaded")
+    print(f"\n{n_ok}/{len(results)} loaded cleanly. survey.json written.")
 
 
 if __name__ == "__main__":

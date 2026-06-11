@@ -148,6 +148,27 @@ class EnvHandle:
                     return content if isinstance(content, str) else None
         return None
 
+    def module_file(self) -> str | None:
+        """Path to the environment package's source file, for source-level review."""
+        import importlib
+
+        mod_name = self.env_id.replace("-", "_").split("/")[-1]
+        try:
+            return getattr(importlib.import_module(mod_name), "__file__", None)
+        except Exception:
+            return None
+
+    def dataset_size(self) -> dict[str, int | None]:
+        """Best-effort row counts for the train and eval splits."""
+        out: dict[str, int | None] = {"train": None, "eval": None}
+        for split, getter in (("train", "get_dataset"), ("eval", "get_eval_dataset")):
+            try:
+                ds = getattr(self.env, getter)(n=-1)
+                out[split] = len(ds) if ds is not None else 0
+            except Exception:
+                out[split] = None
+        return out
+
     # Dataset columns that verifiers already treats specially; everything else
     # in a row is exposed to reward functions as a named argument.
     _RESERVED_COLS = {"prompt", "answer", "info", "example_id"}

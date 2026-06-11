@@ -1,247 +1,125 @@
-# DESIGN — RLEnv_audit
+# DESIGN — env_audit
 
-> "pytest for RL environments." Point it at a `verifiers` environment from the
-> Prime Intellect Environments Hub; it runs a battery of automated checks and
-> prints a quality scorecard + a machine-readable `report.json`.
+> A skill-based auditing system for RL environments. An agent (Claude Code /
+> Codex) runs six judgment-based checks over a `verifiers` environment and emits
+> a scorecard with scores + written justifications.
 
 ## 1. Why this exists
 
-RL post-training environments are now treated like training data — but unlike
-data, nobody tests them before burning GPU hours. A broken reward function does
-not crash; it silently teaches the policy garbage:
+RL post-training environments are treated like training data, but nobody tests
+them before burning GPU hours. A broken reward doesn't crash — it silently
+teaches the policy garbage: non-deterministic rewards (noisy gradient),
+exploitable rewards (the policy cheats), rewards that don't discriminate (no
+signal), brittle parsers (correct answers scored wrong), contaminated datasets
+(memorized eval). env_audit catches these first.
 
-- **Non-deterministic rewards** → noisy gradient, the policy chases randomness.
-- **Exploitable rewards** → the policy learns to cheat (`sys.exit(0)`, read the
-  answer off disk) instead of solving the task.
-- **Degenerate reward distributions** (all-zero / all-one) → zero gradient, no
-  learning signal at all.
-- **Brittle parsers** → correct answers scored wrong because of a stray space.
-- **Contaminated datasets** → "improvement" that is just memorized eval data.
+## 2. The core decision: skills, not scripts
 
-`RLEnv_audit` catches these before they cost a training run. The end goal is a
-survey: *"I audited N Hub environments; X failed determinism, Y are exploitable,
-Z are contaminated."* So the tool must run on real Hub environments, emit clean
-JSON, and be runnable by a stranger in 60 seconds.
+The six checks are **judgment-heavy and non-deterministic** — "does this reward
+agree with a competent grader?", "is the system prompt missing something?", "does
+this dataset overlap a benchmark?". A deterministic script can only approximate
+these with brittle heuristics. An agent does them well.
 
-## 2. The one architectural rule: CLI tool over a library, NOT a framework
+So each check is a **skill file** (`skills/<check>/SKILL.md`, SKILL.md style with
+`name` + `description` frontmatter) that an agent reads and executes with its own
+reasoning. The agent leans on a thin **tool layer** (`rlenv-audit ...`) only for
+the parts that must be exact and reproducible:
 
-The whole value is **zero adoption cost**. A person with an environment runs one
-command and gets a verdict. No subclassing, no restructuring their env, no config
-files to get started.
+- **load + introspect** the environment,
+- **score** agent-written completions through the real reward function,
+- run + cache a **shared set of rollouts**,
+- **render** the scorecard.
 
-- **Primary interface — CLI:** `rlenv-audit run <env-id>` runs the battery,
-  prints a scorecard, writes `report.json`.
-- **Library underneath:** `import rlenv_audit; report = rlenv_audit.audit(env)`
-  returns a structured `Scorecard`. **The CLI is a thin wrapper** — it parses
-  args and renders output; every bit of real logic lives in the library.
-
-The test for every design decision: *"can a stranger get value in 60 seconds
-without reading docs?"* If no, it has drifted into framework territory — stop and
-simplify.
+Tools are pure JSON-in / JSON-out so a skill can shell out and read the result.
+This split keeps judgment in the agent and determinism in the code.
 
 ## 3. Target format: `verifiers==0.1.14`
 
-We build against one format — the `verifiers` library, Prime Intellect's standard
-for the Hub. The version is **pinned to `0.1.14`** deliberately: the target box
-has old/fragile CUDA, and newer `verifiers` drags in torch/vLLM. Five of the six
-checks need only the verifiers *core*, which is CPU-only.
-
-The adapter was written against the **actually installed source**, not remembered
-API. The facts that shaped the design (all verified by reading
-`site-packages/verifiers/`):
+We build against the `verifiers` library (the Hub standard), **pinned to 0.1.14**
+(newer versions drag in torch/vLLM; the target box has old CUDA). The adapter was
+written against the actually-installed source. Facts that shaped it:
 
 | Concern | Reality in 0.1.14 |
 | --- | --- |
-| Loading | `verifiers.load_environment(env_id, **env_args) -> Environment` is **synchronous**. It imports a module named `env_id.replace("-","_").split("/")[-1]` and calls its `load_environment()`. The env must be pip-installed as an importable module (via `vf-install`). |
-| Rubric | Often a **`RubricGroup`**, whose own `.funcs` is empty — the real reward functions live in sub-rubrics and surface via `rubric._get_reward_func_names()`. |
-| Scoring | **Async**, mutates a `state` dict in place. `score_rollout` asserts no group rewards; `score_group` handles both. We branch on `rubric.has_group_rewards`. |
-| Reward funcs | May be bound methods using a `ProcessPoolExecutor` (e.g. `MathRubric`) → must `teardown()` when done or the process can hang. |
-| Parser | `parser.parse_answer(messages) -> str | None` extracts the answer from a completion; `parser.parse(text)` is the lower-level hook. |
-| Dataset | A HuggingFace `Dataset`; rows carry `prompt` (a `Messages` list of `{role,content}`), `answer` (str), plus env-specific columns. Read via `env.get_dataset(n)`. |
+| Loading | `verifiers.load_environment(env_id)` is **synchronous**; it imports a module named `env_id.replace("-","_").split("/")[-1]` and calls its `load_environment()`. The env must be pip-installed (`vf-install`). |
+| Rubric | Often a **`RubricGroup`** whose own `.funcs` is empty — real reward funcs surface via `rubric._get_reward_func_names()`. |
+| Scoring | **Async**, mutates a `state` dict in place. Branch on `rubric.has_group_rewards` (`score_group` vs `score_rollout`). |
+| Reward funcs | May own a `ProcessPoolExecutor` (e.g. `MathRubric`) → must `teardown()`. |
+| Parser | `parser.parse_answer(messages) -> str | None`. |
+| Dataset | HF `Dataset`; rows carry `prompt` (chat messages), `answer`, plus env columns. Many Hub envs are eval-only. |
 
-## 4. Abstraction mapping
+## 4. The adapter — `EnvHandle` (`adapters/verifiers.py`)
 
-```
-verifiers concept      attacked by
--------------------    ----------------------------------------
-rubric / reward fns →  determinism, reward_design, exploits, distribution checks
-parser             →  parser-robustness check
-dataset            →  contamination check
-(whole pipeline)   →  integrity, rollouts, design_review checks
-```
-
-## 5. The adapter — `EnvHandle` (`adapters/verifiers.py`)
-
-The adapter is the only code that touches `verifiers`. It normalizes a loaded
-environment into an `EnvHandle` so checks never import `verifiers` directly:
+The only code that touches `verifiers`. It normalizes a loaded env into a stable,
+synchronous handle the tools use:
 
 ```python
 EnvHandle:
-    env_id: str
-    env: verifiers.Environment      # the raw loaded env
-    rubric, parser                  # convenience handles
-    dataset(n) -> list[dict]        # normalized rows: {prompt, answer, info, ...}
-    reward_func_names() -> list[str]
-    score(text, prompt, answer, info) -> (reward: float, metrics: dict[str,float])
-    teardown()                      # best-effort rubric teardown (ProcessPool)
+    load_handle(env_id) -> EnvHandle          # clean EnvLoadError on failure
+    reward_func_names() / reward_sources()    # names + getsource of reward fns (RubricGroup-aware)
+    system_prompt() / module_file()           # env framing + source file
+    dataset(n) / dataset_size()               # normalized rows, train↔eval fallback
+    score(text, prompt, answer, columns) -> (reward, metrics)   # sync over async scoring
+    canonical_answer(answer) / teardown()
 ```
 
-`score()` is the heart of the tool. It is a **synchronous** wrapper over the
-async verifiers scoring path, so checks (and the public `audit()`) never deal
-with asyncio:
+`score()` builds a `state` dict, runs the rubric (group-aware), and returns the
+reward — uniform across `Rubric`, `MathRubric`, and `RubricGroup`. All dataset
+columns are threaded through so reward funcs that read custom fields work.
 
-1. Build a plain `state` dict:
-   `{"prompt", "completion": [{"role":"assistant","content": text}], "answer",
-   "info", "task": None, "input", "trajectory": []}`.
-2. `if rubric.has_group_rewards: await rubric.score_group([state])`
-   else `await rubric.score_rollout(state)`.
-3. Return `state["reward"]` and `dict(state["metrics"])`.
+## 5. The tool layer (`tools.py`, `cli.py`)
 
-This one path works uniformly across plain `Rubric`, `MathRubric`, and
-`RubricGroup`. Loading is wrapped so a bad env-id yields a clean error, never a
-traceback.
+Four commands, each JSON-in/JSON-out:
 
-## 6. Data model (`checks/base.py`, `report.py`)
+- `rlenv-audit inspect <env> -n 20` → `{loaded, env_type, parser_type, module_file,
+  dataset_size, system_prompt, reward_funcs:[{name,weight,source}], sample:[...]}`.
+  Load failures are captured as `{loaded: false, error}` so the integrity check
+  sees them as data. Used by checks 1, 2, 3, 6.
+- `rlenv-audit score <env> completions.json` → scores agent-written
+  `[{prompt_index, label, text}]` through the reward function. Used by check 3.
+- `rlenv-audit rollouts <env> --endpoint --model -n 20 -k 8` (or `--dummy`) →
+  generates 8 rollouts over ~20 tasks **once**, scores + times them, caches to
+  JSON. Checks 4 and 5 share this single cache.
+- `rlenv-audit scorecard results.json` → computes the overall grade + rating
+  (average of the checks that ran; N/A excluded) and renders the table.
 
-- `CheckStatus`: `PASS | FAIL | WARN | SKIP`. **SKIP** = the check could not run
-  here (no GPU, Docker down, N/A for this env type) — distinct from FAIL.
-- `CheckResult` (dataclass): `check_name`, `status`, `score: float | None`,
-  `summary` (one human line for the table), `details: dict` (structured findings
-  for JSON), `duration_s`.
-- `Scorecard`: the env id + a list of `CheckResult` + a derived overall grade,
-  with `to_terminal()` (rich table, color-coded) and `to_json()` (full details
-  for the survey stage).
+## 6. The six checks (`skills/`)
 
-Each check is an independent function `check_x(handle, config) -> CheckResult`.
-Independence is a requirement: some need a GPU, some need Docker, so
-`--only exploits,contamination` and `--skip distribution` must work, and every
-failure mode degrades to a clean SKIP/FAIL result rather than crashing the run.
+0. **integrity** — does it run and is it shaped right (dataset, reward, conventions,
+   imports). No endpoint.
+1. **problem-alignment** (conditional) — given the user's problem statement, does
+   the env actually test it. **N/A** without a problem statement. No endpoint.
+2. **reward-design** — agent writes ~20 synthetic completions (correct / wrong /
+   edge / format perturbations), scores them, and checks (a) variance &
+   discrimination and (b) agreement between the reward and the agent's own quality
+   judgment. No endpoint.
+3. **latency** — end-to-end rollout timing from the shared cache. Needs an endpoint.
+4. **rollout-quality** — reads actual rollouts and judges the env setup (system
+   prompt, output sensibility, env-caused failure modes). Needs an endpoint.
+5. **contamination** — infer domain → pick benchmarks → check dataset overlap. No
+   endpoint.
 
-## 7. The nine checks
+The **env-audit** orchestrator skill gathers inputs (env id, optional problem
+statement, optional endpoint), runs the no-endpoint checks, generates the shared
+rollouts once if an endpoint is given, runs the endpoint checks from that cache,
+and assembles the scorecard.
 
-0. **integrity** (no GPU, runs first) — pure structural introspection that works
-   on *any* env type, no scoring at all: reward functions present, dataset
-   non-empty, answers populated, duplicate (question+answer) tasks, well-formed
-   chat prompts, system prompt present.
-1. **determinism** (needs a model endpoint → SKIP) — a model following
-   `skills/determinism.md` reads the env and writes ~20 diverse probe
-   completions (gold / rewritten gold / wrong / edge cases) **in the env's own
-   answer format**; each is scored 5× and FAIL if any reward varies. No static
-   battery — the probes adapt to any env type (code, SQL, JSON, games).
-2. **reward_design** (weight check no-model; shape probing needs an endpoint) —
-   probe the reward *shape* with model-written gold / partial / wrong / garbage
-   completions over several tasks: does correct
-   out-score garbage (discrimination), is there a constant baseline floor, is the
-   signal constant/binary/graded, are rewards bounded to [0,1], are the weights
-   sane. FAIL/WARN with a concrete recommendation per finding.
-3. **exploits** (no GPU, **Docker-mandatory**) — submit known cheat patterns
-   instead of honest solutions (`sys.exit(0)`, monkeypatch `assert`, read the
-   expected-output file, print the answer without computing, empty+success,
-   parser-format tricks); a cheat counts only if it clears a junk **baseline**;
-   FAIL listing which cleared it. Runs inside a Docker sandbox (hostile code).
-4. **parser** (no GPU) — feed correct answers in perturbed formats through the
-   parser; score = fraction still extracted; WARN below threshold.
-5. **contamination** (no GPU) — n-gram overlap of dataset questions against
-   cached popular eval sets (AIME, MATH-500, GSM8K, HumanEval, LiveCodeBench),
-   with document-frequency boilerplate filtering; FAIL listing matches.
-6. **rollouts** (needs a model endpoint → SKIP) — real mini-rollouts via any
-   OpenAI-compatible endpoint (OpenAI / local vLLM): generate, parse, score, and
-   check the pipeline works on real model text; WARN on zero-variance rewards or
-   a parser that extracts nothing from real output.
-7. **design_review** (needs a model endpoint → SKIP) — hands the env's actual
-   reward-function *source code* (via `inspect.getsource`), system prompt,
-   parser type, and sample tasks to an LLM together with the REWARD_DESIGN.md
-   guide, and asks for a structured JSON review (severity / finding / fix) of
-   the issues only reading the code reveals: swallowed exceptions that turn
-   errors into a fixed reward, gameable judge prompts, fragile regexes,
-   machine-dependent timeouts.
-8. **distribution** (needs GPU → SKIP) — vLLM rollouts with a small reference
-   model, histogram the rewards; WARN on all-zero / all-one / empty-rewarded.
+## 7. Scoring model
 
-**Scorecard layer.** Beyond per-check status, the report derives a weighted
-**0–100 rating (A–F)** over the checks that actually ran (SKIP excluded), and
-aggregates every check's **recommendations** — each citing a section of
-`REWARD_DESIGN.md` — into a "what to improve" list. That's what turns the audit
-from a pass/fail gate into actionable design feedback.
+Each check returns `{name, status, score (0–100|null), justification}`.
 
-## 8. CLI surface
+- **status**: PASS (~75–100) / WARN (~40–74) / FAIL (~0–39) / **N/A** (documented
+  skip: no problem statement, no endpoint).
+- **rating**: the mean of the numeric scores over checks that actually ran (N/A
+  excluded), mapped to an A–F letter.
+- **grade**: the worst meaningful status (any FAIL → FAIL).
 
-```
-rlenv-audit run <env-id>                  # full battery
-rlenv-audit run <env-id> --only a,b       # subset
-rlenv-audit run <env-id> --skip c         # exclude
-rlenv-audit run <env-id> --json out.json  # also write JSON report
-rlenv-audit run <env-id> --model <name>   # reference model for distribution
-rlenv-audit list-checks                   # checks + what each needs
-```
+Every score must be grounded in observed evidence — tool output, completions the
+agent wrote, rollouts it read — never a vibe. `REWARD_DESIGN.md` is the rubric the
+reward-design and rollout-quality checks judge against.
 
-## 9. Validated environment types & known limitations
+## 8. Honest scope
 
-The tool is built generically over the `verifiers` API and validated on four
-structurally different env types:
-
-| Env | Type | Notes |
-| --- | --- | --- |
-| `gsm8k` | `SingleTurnEnv` + `MathRubric`/`RubricGroup` | reference env |
-| `reverse_text` | `SingleTurnEnv` + `XMLParser` | continuous LCS reward |
-| `wordle` | `TextArenaEnv` (multi-turn) | game env |
-| `math_group` | `EnvGroup` | aggregates sub-envs |
-
-To stay env-agnostic the adapter threads *all* dataset columns into the scoring
-state, and the parser/exploit checks discover each env's canonical answer format
-from the parser itself (`parser.format(...)`), rather than assuming `\boxed{}`.
-
-Honest limitations (each degrades to a clean SKIP, never a crash):
-
-* **Multi-turn / tool / agentic rewards.** Scoring submits a single synthetic
-  completion; rewards that depend on a real multi-turn trajectory or tool I/O
-  can't be reproduced without a model, so determinism/exploits give a weaker
-  signal there.
-* **Offline exploit sandbox.** The sandbox runs with no network. Envs needing
-  data not already cached (e.g. an NLTK corpus) or an external service fail to
-  load *inside the container* → exploits SKIPs with the reason surfaced.
-* **Pass-through parsers.** When `env.parser` does no extraction (the reward
-  function extracts the answer itself), the parser check SKIPs — there's nothing
-  parser-specific to perturb.
-* **Incompatible env deps.** Some Hub envs pin dependencies that conflict with
-  `verifiers==0.1.14` and won't install (e.g. `math_python`); those can't be
-  audited under this pin.
-
-## 9b. Skill-file-driven input generation (`skills.py`, `skills/`)
-
-Checks that need *inputs* shaped like the env under test (probes, cheats, format
-variants) can't use a static battery — a `\boxed{}` template fits math/QA and
-nothing else. Each such check ships a **skill file** `skills/<check>.md`: a prompt
-that tells a model how to read this env and write the inputs that check needs.
-
-`skills.run_skill(handle, config, name, rows)` loads the skill, appends a
-structured env description (system prompt, parser, sample tasks + gold answers,
-reward functions, and — for exploits — the reward source via
-`EnvHandle.reward_sources()`), calls the configured OpenAI-compatible endpoint,
-and parses the model's JSON back. Results are cached per skill name in `config`
-so a skill runs at most once per audit. No endpoint / bad output → `None`, and
-the check SKIPs.
-
-| Skill | Used by | Generates |
-| --- | --- | --- |
-| `determinism.md` | determinism | ~20 gold / rewritten / wrong / edge probes |
-| `reward_design.md` | reward_design | gold / partial / wrong / garbage completions |
-| `exploits.md` | exploits | env-specific cheats (+ the universal battery) |
-| `parser.md` | parser | realistic format variants of the correct answer |
-
-This is the "user has Claude Code / Codex" path: point the audit at any model
-endpoint and every skill-driven check writes the inputs tailored to *that*
-environment. determinism and reward_design have no static fallback (SKIP without
-an endpoint); exploits and parser keep their universal batteries and only *add*
-the generated inputs.
-
-## 10. Honest scope statement
-
-The tool now runs **nine checks** (the original six plus `integrity`,
-`reward_design`, `rollouts`, `design_review`) over **one format (`verifiers`)**
-through **one command**, generating env-adaptive inputs via per-check skill files
-when a model endpoint is available, and emits a rating + recommendations. There
-is no plugin
-system, no config-file framework, no multi-format support — on purpose. The
-`adapters/` and `checks/` seams make those *possible* later without building them
-now. Extension is a future concern; adoption cost is the present one.
+Six checks, one format (`verifiers`), agent-driven. Determinism lives in the
+tools; judgment lives in the skills. No plugin system, no config framework — the
+`adapters/` + `skills/` seams make extension possible without building it now.

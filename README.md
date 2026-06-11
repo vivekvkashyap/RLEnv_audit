@@ -1,212 +1,112 @@
-# RLEnv_audit
+# env_audit
 
-**pytest for RL environments.** Point it at a
-[`verifiers`](https://github.com/PrimeIntellect-ai/verifiers) environment from the
-Prime Intellect Environments Hub and it runs a battery of automated quality
-checks, prints a scorecard with a 0–100 rating, and tells you **what to fix** —
-before you spend GPU hours training on a broken reward.
+**A skill-based auditing system for RL environments.** Point an agent (Claude
+Code / Codex) at a [`verifiers`](https://github.com/PrimeIntellect-ai/verifiers)
+environment from the Prime Intellect Hub and it runs **six checks** and produces
+a scorecard — *before* you spend GPU hours training on a broken reward.
 
-RL post-training environments are treated like training data, but unlike data
-nobody tests them first. A broken reward function doesn't crash — it silently
-teaches the policy garbage:
+RL environments are treated like training data, but nobody tests them first. A
+broken reward function doesn't crash — it silently teaches the policy garbage.
+env_audit catches that.
 
-- rewards that vary run-to-run (noisy gradient),
-- reward paid out to `sys.exit(0)` or to reading the answer off disk (reward hacking),
-- a reward that scores correct answers no better than garbage (no signal),
-- all-zero / all-one reward distributions (no gradient),
-- a parser that drops the reward over a stray space,
-- a dataset that's secretly the eval set (contamination).
+## Why skills, not scripts
 
-RLEnv_audit catches these in seconds, on CPU, with one command.
+The six checks are **judgment-heavy, non-deterministic evaluations** — "does this
+reward agree with a competent grader?", "is the system prompt missing something?",
+"does this dataset overlap a benchmark?". Those are done well by an *agent*, not a
+hard-coded script. So each check is a **skill file** (`skills/<check>/SKILL.md`)
+that the agent reads and executes with its own reasoning, leaning on a small layer
+of deterministic **tools** (`rlenv-audit ...`) for the exact parts: loading the
+env, calling the reward function, running rollouts, rendering the scorecard.
 
-```console
-$ rlenv-audit run gsm8k
+Each check returns a **score (0–100), a status, and a written justification**.
 
-                              RLEnv_audit · gsm8k
-┏━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ check         ┃ status ┃ summary                                             ┃
-┡━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ determinism   │ PASS   │ all 12 completions stable across 5 repeats          │
-│ reward_design │ PASS   │ binary reward, separates gold from garbage on 5/5   │
-│ exploits      │ PASS   │ no hard cheats exploited                            │
-│ parser        │ PASS   │ parser handled 21/24 perturbations (88%)            │
-│ contamination │ PASS   │ no overlap found; checked 500 questions             │
-│ rollouts      │ SKIP   │ no model endpoint configured                        │
-└───────────────┴────────┴─────────────────────────────────────────────────────┘
-overall grade: PASS   rating: A (100/100)   (PASS 5  SKIP 1)
+## The six checks
 
-Recommendations (what to improve before training on this env):
-  1. Reward is strictly 0-or-1. That's valid, but graded partial credit usually
-     gives the policy a denser gradient on hard tasks (REWARD_DESIGN.md §partial-credit).
+| # | Check | Needs | What it does |
+|---|-------|-------|--------------|
+| 1 | **integrity** | — | Does it even run and is it shaped right: dataset loads & is well-formed, reward present & callable, follows verifiers conventions, no missing fields / broken imports. |
+| 2 | **problem-statement alignment** | *(a problem statement)* | Given what the user says the env is *for*, judge whether the dataset + reward + prompt actually test that. **N/A** if no problem statement is provided. |
+| 3 | **reward design** | — | Stress-tests the reward without the policy: the agent writes ~20 synthetic completions (correct / wrong / edge / format perturbations), scores them through the real reward, and checks (a) the reward varies & discriminates sensibly and (b) each reward matches the agent's own judgment of quality. |
+| 4 | **latency** | model endpoint | How long rollouts take end to end. Reads the shared cached rollouts. |
+| 5 | **rollout quality** | model endpoint | Reads actual rollouts and judges whether the env is set up well in practice — system prompt right, outputs sensible, obvious env-caused failure modes. |
+| 6 | **contamination** | — | Infers the domain, picks the public benchmarks for it, and checks whether dataset instances match/near-match benchmark instances. |
 
-report written to: report.json
-```
-
----
-
-## Install
-
-RLEnv_audit pins **`verifiers==0.1.14`** on purpose — newer versions drag in
-torch/vLLM, and most of the nine checks run on CPU (the model-assisted ones just need an API endpoint).
-
-```bash
-# with uv (recommended)
-uv venv --python 3.11
-uv pip install -e .            # or: uv pip install rlenv-audit
-
-# install an environment to audit (anything exposing load_environment)
-vf-install primeintellect/gsm8k       # from the Environments Hub
-vf-install gsm8k -r                    # or the example envs in the verifiers repo
-```
-
-> **Python version note.** Most current Hub environments (`primeintellect/*`)
-> require **Python ≥3.11**, so use a 3.11 venv for those. The pinned
-> `verifiers==0.1.14` also runs on 3.10 if you specifically need it (e.g. an old
-> CUDA box) — but you'll only be able to install the older example envs there.
-
-Optional extras:
-
-- **exploits** needs **Docker** running (it executes hostile code in an isolated,
-  network-disabled container).
-- **distribution** needs a **GPU + vLLM**: `uv pip install -e ".[gpu]"`.
-- **rollouts** needs an **OpenAI-compatible endpoint** (OpenAI, or a local vLLM /
-  llama.cpp server).
-
-Any of these missing → that check `SKIP`s; the audit still runs.
-
----
+**Shared rollouts (checks 4 & 5).** Both need a model, so env_audit asks once
+which endpoint/model to use (or "dummy"), runs rollouts **once** (8 rollouts over
+~20 samples, scored + timed, cached), and both checks read that single cache.
+Checks 1, 2, 3, 6 need no endpoint. No endpoint → 4 & 5 are **N/A**.
 
 ## Usage
 
-```bash
-rlenv-audit run <env-id>                          # full battery
-rlenv-audit run <env-id> --only determinism,parser
-rlenv-audit run <env-id> --skip distribution,rollouts
-rlenv-audit run <env-id> --json out.json          # also write JSON here
-rlenv-audit run <env-id> --model Qwen/Qwen2.5-1.5B-Instruct          # distribution model
-rlenv-audit run <env-id> --endpoint http://localhost:8000/v1 --model qwen   # enable rollouts
-rlenv-audit list-checks                           # what each check needs
+env_audit is run **by an agent**. With the skills available to Claude Code /
+Codex, point it at an environment:
+
+> "Audit the `gsm8k` environment." &nbsp; / &nbsp; "Audit `primeintellect/aime2024`
+> — I'm trying to train a competition-math solver — using my vLLM at
+> `http://localhost:8000/v1`."
+
+The agent loads the `env-audit` skill, runs the six checks, and prints the
+scorecard:
+
+```
+                               env_audit · gsm8k
+┃ check             ┃ status ┃ score ┃ justification                           ┃
+│ integrity         │ PASS   │    95 │ loads, reward callable, well-formed     │
+│ problem_alignment │ N/A    │     — │ no problem statement provided           │
+│ reward_design     │ PASS   │    88 │ discriminates; matches judgment 18/20   │
+│ latency           │ N/A    │     — │ no endpoint                             │
+│ rollout_quality   │ N/A    │     — │ no endpoint                             │
+│ contamination     │ WARN   │    60 │ 3 near-matches with GSM8K test          │
+overall: WARN   rating: B (81/100)
 ```
 
-`rlenv-audit run` writes `report.json` (machine-readable, full details +
-recommendations) and **exits non-zero on an overall FAIL** — drop it straight
-into CI for your environments.
-
-### As a library
-
-The CLI is a thin wrapper; everything is callable programmatically:
-
-```python
-import rlenv_audit
-
-scorecard = rlenv_audit.audit("gsm8k")          # or pass an already-loaded Environment
-print(scorecard.grade)                          # PASS / WARN / FAIL / INCONCLUSIVE
-print(scorecard.rating)                         # {'score': 100, 'letter': 'A', ...}
-print(scorecard.recommendations())              # ["...", ...]
-scorecard.write_json("report.json")
-
-scorecard = rlenv_audit.audit("gsm8k", only=["determinism", "reward_design"])
-```
-
----
-
-## The nine checks
-
-| Check | Needs | What it catches |
-| --- | --- | --- |
-| **integrity** | — | Structural soundness, works on *any* env: reward functions present, dataset non-empty, answers populated, duplicate tasks, well-formed prompts, system prompt present. Pure introspection — no scoring. |
-| **determinism** | model endpoint | A model writes ~20 diverse probes (gold / rewritten / wrong / edge) *in this env's own answer format*; each is scored 5×; **FAIL** if any reward varies. Non-determinism injects noise into the gradient. |
-| **reward_design** | model endpoint | A model writes gold / partial / wrong / garbage completions; checks does correct out-score garbage, flat baseline floor, constant/binary/graded signal, bounds in [0,1], sane weights (the weight check runs without a model). **FAIL/WARN** with concrete fixes. |
-| **exploits** | Docker | Submits known cheats (`sys.exit(0)`, monkeypatch `assert`, read the expected-output file, empty solution) *instead of* real answers; **FAIL** if a no-solution cheat earns reward above a junk baseline. Runs in a locked-down container — it executes hostile code. |
-| **parser** | — | Feeds correct answers in perturbed formats (whitespace, `\boxed{}`, punctuation, casing); score = fraction still extracted; **WARN** if brittle. |
-| **contamination** | — | N-gram overlap of the dataset against popular eval sets (GSM8K, MATH-500, AIME, HumanEval, LiveCodeBench), with boilerplate filtering; **FAIL** listing matches. |
-| **rollouts** | model endpoint | Real mini-rollouts via any OpenAI-compatible endpoint: generate → parse → score, checking the pipeline works on real model text; **WARN** on zero-variance reward or a parser that extracts nothing. |
-| **design_review** | model endpoint | Hands the env's *actual reward-function source code*, system prompt, and sample tasks to an LLM together with `REWARD_DESIGN.md`, and gets a structured expert review — the issues only reading the code reveals (swallowed exceptions, gameable judge prompts, fragile regexes). |
-| **distribution** | GPU | Rollouts with a small reference model; **WARN** on all-zero / all-one / empty-rewarded distributions — shapes that produce no learning signal. |
-
-`SKIP` ≠ `FAIL`. A check SKIPs when it can't run *here* (no GPU, Docker down, no
-endpoint, no dataset) — it is never counted against the environment.
-
-### Skill-file-driven probes
-
-Several checks need *inputs* shaped like the environment under test — and a
-static, hand-written battery only fits math/QA envs. So each such check ships a
-**skill file** (`rlenv_audit/skills/<check>.md`): a prompt telling a model how to
-read this specific env (system prompt, parser, sample tasks + gold answers,
-reward source) and write the inputs that check needs:
-
-| Check | Skill generates |
-| --- | --- |
-| determinism | ~20 diverse probes (gold / rewritten / wrong / edge) in the env's format |
-| reward_design | gold / partial / wrong / garbage completions to measure reward shape |
-| exploits | env-specific cheat completions (alongside the universal security battery) |
-| parser | realistic format variants of the correct answer |
-
-Point the audit at any OpenAI-compatible endpoint (OpenAI, a local vLLM, or a
-Claude-compatible proxy) with `--endpoint` / `OPENAI_API_KEY`, and these checks
-generate exactly the inputs they need for *your* env. **No endpoint → determinism
-and reward_design SKIP** (there is no static fallback, by design); exploits and
-parser still run their universal batteries.
-
-## Rating & recommendations
-
-Beyond per-check status, the report gives you:
-
-- **Overall grade** — the worst meaningful result (any `FAIL` → FAIL).
-- **Rating** — a weighted **0–100 score and A–F letter**, computed only over the
-  checks that actually ran (`PASS` full credit, `WARN` half, `FAIL` none; `SKIP`
-  excluded). So an env isn't penalized for a check that couldn't run.
-- **Recommendations** — every failing check attaches a concrete fix, each citing a
-  section of [`REWARD_DESIGN.md`](REWARD_DESIGN.md), the bundled guide to good
-  reward design (determinism, discrimination, baseline floor, partial credit,
-  bounds, weights, anti-hacking, parser contract, difficulty curriculum,
-  contamination). That's what turns the audit from a gate into design feedback.
-
-A clean scorecard means none of these failure modes were detected on the slice we
-could measure — not a proof of correctness, but the cheap faults are ruled out.
-
-## Auditing many environments
-
-`scripts/survey.py` batch-audits a list of envs in isolated subprocesses (one
-hang or dependency blow-up can't take down the run) and aggregates into
-`survey.json` — the harness behind a Hub-wide survey.
+### Install the skills
 
 ```bash
-python scripts/survey.py aime2024 math500 reverse-text wordle   # or edit the curated default list
+pip install -e .              # installs the rlenv-audit / env-audit tools
+vf-install primeintellect/gsm8k   # install an environment to audit
+cp -r skills/* ~/.claude/skills/  # make the skills available to Claude Code
 ```
 
-## How it works
+> Most Hub envs require **Python 3.11+**; `verifiers==0.1.14` (pinned) also runs
+> on 3.10 for old-CUDA boxes, where you can install the older example envs.
 
-`rlenv-audit` loads the environment through `verifiers.load_environment`, then the
-**adapter** (`adapters/verifiers.py`) normalizes it into an `EnvHandle` — the only
-code that touches `verifiers`. The handle exposes the rubric's reward functions,
-the parser, and the dataset, plus a synchronous `score()` over the library's async
-scoring path (RubricGroup-aware, threads all dataset columns through, tears down
-rubric-owned process pools). Each check is an independent function over that
-handle, so checks run in any subset and degrade to `SKIP` rather than crash. See
-[`DESIGN.md`](DESIGN.md) for the architecture and the verifiers-0.1.14 API notes.
+### The tools (what the skills call)
 
-## Limitations (honest)
+```bash
+rlenv-audit inspect <env> -n 20            # load + introspect -> JSON (reward source, samples, prompt)
+rlenv-audit score <env> completions.json   # score agent-written completions through the reward fn
+rlenv-audit rollouts <env> --endpoint <url> --model <m> -n 20 -k 8   # run+cache shared rollouts
+rlenv-audit rollouts <env> --dummy         # fake rollouts, no endpoint (dry run)
+rlenv-audit scorecard results.json         # render the final scorecard
+```
 
-- **Multi-turn / agentic / tool envs** — checks that score completions probe a
-  single synthetic answer, so they give a weaker signal (or `SKIP`) where the
-  reward depends on a real multi-turn trajectory.
-- **Judge-based rewards** — need an API key to score; without one the scoring
-  checks `SKIP`.
-- **Sandbox / web / MCP envs** — may not load inside the offline exploits
-  container → that check `SKIP`s (with the reason surfaced).
-- **Install layer** — some Hub envs pin dependencies that conflict, or need
-  Python/services you don't have; those are reported as a clean load failure, not
-  a crash.
+These are deterministic and JSON-in/JSON-out — usable directly, but normally
+driven by the skills.
 
-In all cases the tool runs and reports *why* it skipped — it does not break on
-arbitrary environments.
+## What good looks like
+
+[`REWARD_DESIGN.md`](REWARD_DESIGN.md) is the reference the reward-design and
+rollout-quality checks judge against — determinism, discrimination, baseline
+floor, partial credit, bounds, anti-hacking, parser contract, contamination.
+
+## Layout
+
+```
+skills/                 the six checks + the env-audit orchestrator (SKILL.md each)
+rlenv_audit/
+  adapters/verifiers.py EnvHandle — the only code that touches verifiers
+  tools.py              inspect / score / rollouts / scorecard
+  sandbox.py            Docker isolation (for executing risky completions)
+  cli.py                the rlenv-audit / env-audit CLI
+REWARD_DESIGN.md        the design guide the judgment checks cite
+```
 
 ## Development
 
 ```bash
-uv pip install -e ".[dev]"
-pytest tests/          # report unit tests + gsm8k integration tests
+pip install -e ".[dev]" && pytest tests/
 ```
 
 ## License

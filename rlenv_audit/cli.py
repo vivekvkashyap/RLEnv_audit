@@ -1,110 +1,103 @@
-"""Thin CLI wrapper over ``rlenv_audit.audit()``.
+"""CLI for env_audit's mechanical tools.
 
-Parses args, calls the library, renders the scorecard. No audit logic lives here.
+The audit *checks* are skills run by an agent (see ``skills/``). These commands
+are the deterministic helpers those skills shell out to: ``inspect`` an env,
+``score`` agent-written completions, run shared ``rollouts``, and render a
+``scorecard``. Each emits JSON (``--out`` / stdout) so a skill can read it back.
 """
 
 from __future__ import annotations
 
+import json
 import sys
 
 import click
-from rich.console import Console
-from rich.table import Table
 
 from rlenv_audit import __version__
-from rlenv_audit.adapters.verifiers import EnvLoadError
-from rlenv_audit.checks import REGISTRY
-from rlenv_audit.core import audit
+from rlenv_audit.tools import (
+    build_scorecard,
+    inspect_env,
+    render_scorecard,
+    run_rollouts,
+    score_completions,
+)
 
 
-def _split_csv(value: str | None) -> list[str] | None:
-    if not value:
-        return None
-    return [v.strip() for v in value.split(",") if v.strip()]
+def _emit(obj: dict, out: str | None) -> None:
+    text = json.dumps(obj, indent=2, default=str)
+    if out:
+        with open(out, "w") as f:
+            f.write(text)
+        click.echo(f"written to {out}")
+    else:
+        click.echo(text)
 
 
 @click.group()
-@click.version_option(__version__, prog_name="rlenv-audit")
+@click.version_option(__version__, prog_name="env_audit")
 def main() -> None:
-    """RLEnv_audit — pytest for RL environments."""
+    """env_audit — skill-based auditing for RL environments (mechanical tools)."""
 
 
 @main.command()
 @click.argument("env_id")
-@click.option("--only", default=None, help="comma-separated checks to run (exclusively).")
-@click.option("--skip", default=None, help="comma-separated checks to exclude.")
-@click.option("--json", "json_path", default=None, help="also write the JSON report here.")
-@click.option("--model", default=None, help="reference model for the distribution/rollouts checks.")
-@click.option("--endpoint", default=None, help="OpenAI-compatible base URL for the rollouts check (e.g. local vLLM).")
-@click.option("--api-key", default=None, help="API key for the rollouts check (else uses OPENAI_API_KEY).")
-@click.option(
-    "--report/--no-report",
-    default=True,
-    help="write report.json in the cwd (default: on).",
-)
-def run(
-    env_id: str,
-    only: str | None,
-    skip: str | None,
-    json_path: str | None,
-    model: str | None,
-    endpoint: str | None,
-    api_key: str | None,
-    report: bool,
-) -> None:
-    """Run the audit battery against ENV_ID and print a scorecard."""
-    console = Console()
-    config: dict = {}
-    if model:
-        config["model"] = model
-    if endpoint:
-        config["endpoint"] = endpoint
-    if api_key:
-        config["api_key"] = api_key
-
-    try:
-        scorecard = audit(
-            env_id,
-            only=_split_csv(only),
-            skip=_split_csv(skip),
-            config=config,
-        )
-    except EnvLoadError as exc:
-        console.print(f"[bold red]error:[/] {exc}")
-        sys.exit(2)
-    except KeyError as exc:
-        # unknown check name from --only/--skip
-        console.print(f"[bold red]error:[/] {exc.args[0] if exc.args else exc}")
-        sys.exit(2)
-
-    console.print()
-    scorecard.to_terminal(console)
-
-    written: list[str] = []
-    if report:
-        scorecard.write_json("report.json")
-        written.append("report.json")
-    if json_path:
-        scorecard.write_json(json_path)
-        written.append(json_path)
-    if written:
-        console.print(f"\nreport written to: {', '.join(written)}")
-
-    # Non-zero exit if the env failed the audit — useful in CI.
-    sys.exit(1 if scorecard.grade == "FAIL" else 0)
+@click.option("-n", "--samples", default=20, help="dataset rows to sample.")
+@click.option("--out", default=None, help="write JSON here instead of stdout.")
+def inspect(env_id: str, samples: int, out: str | None) -> None:
+    """Load ENV_ID and dump a structured description (load status, reward source,
+    dataset samples, system prompt). Used by integrity/reward-design/contamination."""
+    _emit(inspect_env(env_id, n=samples), out)
 
 
-@main.command(name="list-checks")
-def list_checks() -> None:
-    """List available checks and what each one needs."""
-    console = Console()
-    table = Table(title="RLEnv_audit checks", title_style="bold")
-    table.add_column("check", style="bold")
-    table.add_column("needs")
-    table.add_column("description")
-    for spec in REGISTRY.values():
-        table.add_row(spec.name, spec.needs(), spec.description)
-    console.print(table)
+@main.command()
+@click.argument("env_id")
+@click.argument("completions_json", type=click.Path(exists=True))
+@click.option("--out", default=None, help="write JSON here instead of stdout.")
+def score(env_id: str, completions_json: str, out: str | None) -> None:
+    """Score COMPLETIONS_JSON ([{prompt_index, label, text}, ...]) through ENV_ID's
+    reward function. Used by the reward-design skill."""
+    with open(completions_json) as f:
+        completions = json.load(f)
+    if isinstance(completions, dict):
+        completions = completions.get("completions", [])
+    _emit(score_completions(env_id, completions), out)
+
+
+@main.command()
+@click.argument("env_id")
+@click.option("--endpoint", default=None, help="OpenAI-compatible base URL.")
+@click.option("--api-key", default=None, help="API key (else OPENAI_API_KEY).")
+@click.option("--model", default=None, help="model name (else first served / gpt-4o-mini).")
+@click.option("-n", "--samples", default=20, help="tasks to roll out.")
+@click.option("-k", "--rollouts", "k", default=8, help="rollouts per task.")
+@click.option("--dummy", is_flag=True, help="fake rollouts without an endpoint.")
+@click.option("--out", default=None, help="write JSON here (also cached by default).")
+def rollouts(env_id, endpoint, api_key, model, samples, k, dummy, out) -> None:
+    """Run K rollouts over N tasks once, score+time them, cache to JSON. The
+    latency and rollout-quality skills share this single cache."""
+    result = run_rollouts(
+        env_id, endpoint=endpoint, api_key=api_key, model=model,
+        n_samples=samples, k=k, dummy=dummy, cache_path=out,
+    )
+    click.echo(json.dumps({k2: v for k2, v in result.items() if k2 != "samples"}, indent=2, default=str))
+    if "error" in result:
+        sys.exit(1)
+
+
+@main.command()
+@click.argument("results_json", type=click.Path(exists=True))
+@click.option("--json", "as_json", is_flag=True, help="emit the computed scorecard as JSON.")
+def scorecard(results_json: str, as_json: bool) -> None:
+    """Render a scorecard from RESULTS_JSON ({env_id, checks:[{name,status,score,
+    justification}]}). The orchestrator skill writes this after running the checks."""
+    with open(results_json) as f:
+        data = json.load(f)
+    if as_json:
+        click.echo(json.dumps(build_scorecard(data), indent=2, default=str))
+    else:
+        render_scorecard(data)
+    if build_scorecard(data)["grade"] == "FAIL":
+        sys.exit(1)
 
 
 if __name__ == "__main__":  # pragma: no cover
