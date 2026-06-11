@@ -37,51 +37,30 @@ which endpoint/model to use (or "dummy"), runs rollouts **once** (8 rollouts ove
 ~20 samples, scored + timed, cached), and both checks read that single cache.
 Checks 1, 2, 3, 6 need no endpoint. No endpoint → 4 & 5 are **N/A**.
 
-## Install (pick any ONE of these)
+## Quickstart
 
-Every route ends the same way — the seven skill files installed for your agent —
-so choose whichever fits and ignore the rest.
+```bash
+# Install the skills (pick one)
+uvx --from git+https://github.com/vivekvkashyap/RLEnv_audit.git rlenv-audit install-skills
+pip install git+https://github.com/vivekvkashyap/RLEnv_audit.git && rlenv-audit install-skills
+```
 
-**Option A — Claude Code plugin** (no terminal needed):
+Or as a Claude Code plugin, no terminal needed:
 
 ```
 /plugin marketplace add vivekvkashyap/RLEnv_audit
 /plugin install env-audit@rlenv-audit
 ```
 
-**Option B — uv** (works today, straight from GitHub):
-
-```bash
-uvx --from git+https://github.com/vivekvkashyap/RLEnv_audit.git rlenv-audit install-skills
-```
-
-(once on PyPI this shortens to `uvx rlenv-audit install-skills`)
-
-**Option C — pip:**
-
-```bash
-pip install git+https://github.com/vivekvkashyap/RLEnv_audit.git && rlenv-audit install-skills
-```
-
-That's it. Everything else is self-bootstrapping: on the first audit the skill
-installs the `rlenv-audit` tools (if missing) and `vf-install`s the environment
-itself.
-
-> Building a Python project *around* the tools instead? `uv add
-> git+https://github.com/vivekvkashyap/RLEnv_audit.git` and import
-> `rlenv_audit` like any library.
-
-## Usage
-
-env_audit is run **by an agent**. With the skills installed, point it at an
-environment:
+Then point your agent (Claude Code / Codex) at an environment:
 
 > "Audit the `gsm8k` environment." &nbsp; / &nbsp; "Audit `primeintellect/aime2024`
 > — I'm trying to train a competition-math solver — using my vLLM at
 > `http://localhost:8000/v1`."
 
-The agent loads the `env-audit` skill, runs the six checks, and prints the
-scorecard:
+That's it — everything else is self-bootstrapping: on the first audit the skill
+installs the `rlenv-audit` tools (if missing) and `vf-install`s the environment
+itself. The agent runs the six checks and prints the scorecard:
 
 ```
                                env_audit · gsm8k
