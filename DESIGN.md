@@ -85,18 +85,18 @@ Four commands, each JSON-in/JSON-out:
 
 ## 6. The six checks (`skills/`)
 
-0. **integrity** — does it run and is it shaped right (dataset, reward, conventions,
+1. **integrity** — does it run and is it shaped right (dataset, reward, conventions,
    imports). No endpoint.
-1. **problem-alignment** (conditional) — given the user's problem statement, does
+2. **problem-alignment** (conditional) — given the user's problem statement, does
    the env actually test it. **N/A** without a problem statement. No endpoint.
-2. **reward-design** — agent writes ~20 synthetic completions (correct / wrong /
+3. **reward-design** — agent writes ~20 synthetic completions (correct / wrong /
    edge / format perturbations), scores them, and checks (a) variance &
    discrimination and (b) agreement between the reward and the agent's own quality
    judgment. No endpoint.
-3. **latency** — end-to-end rollout timing from the shared cache. Needs an endpoint.
-4. **rollout-quality** — reads actual rollouts and judges the env setup (system
+4. **latency** — end-to-end rollout timing from the shared cache. Needs an endpoint.
+5. **rollout-quality** — reads actual rollouts and judges the env setup (system
    prompt, output sensibility, env-caused failure modes). Needs an endpoint.
-5. **contamination** — infer domain → pick benchmarks → check dataset overlap. No
+6. **contamination** — infer domain → pick benchmarks → check dataset overlap. No
    endpoint.
 
 The **env-audit** orchestrator skill gathers inputs (env id, optional problem

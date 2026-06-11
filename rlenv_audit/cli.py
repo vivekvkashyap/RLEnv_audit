@@ -45,7 +45,8 @@ def main() -> None:
 @click.option("--out", default=None, help="write JSON here instead of stdout.")
 def inspect(env_id: str, samples: int, out: str | None) -> None:
     """Load ENV_ID and dump a structured description (load status, reward source,
-    dataset samples, system prompt). Used by integrity/reward-design/contamination."""
+    dataset samples, system prompt). Used by the integrity, problem-alignment,
+    reward-design and contamination checks."""
     _emit(inspect_env(env_id, n=samples), out)
 
 

@@ -98,17 +98,17 @@ overlap with its own benchmark is expected — just never use it for training.
 
 ---
 
-### How `rlenv-audit` maps to these sections
+### How the audit checks map to these sections
 
-| Check | Sections it enforces |
+| Check | Sections it judges against |
 | --- | --- |
-| determinism | §determinism |
-| reward_design | §discrimination, §baseline-floor, §partial-credit, §bounds, §weights |
-| exploits | §anti-hacking |
-| parser | §parser-contract |
-| rollouts | §parser-contract, §difficulty-curriculum |
-| distribution | §difficulty-curriculum |
+| integrity | §parser-contract, §weights |
+| reward_design | §determinism, §discrimination, §baseline-floor, §partial-credit, §bounds, §weights, §anti-hacking, §parser-contract |
+| rollout_quality | §parser-contract, §difficulty-curriculum |
 | contamination | §contamination |
+
+(problem_alignment and latency judge things outside this guide: the user's stated
+goal and throughput.)
 
 A clean scorecard means none of these failure modes were detected on the slice we
 could measure — not a proof of correctness, but the cheap faults are ruled out

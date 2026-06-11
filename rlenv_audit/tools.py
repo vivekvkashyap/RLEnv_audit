@@ -256,7 +256,7 @@ def build_scorecard(data: dict) -> dict:
     scored = [c["score"] for c in checks if isinstance(c.get("score"), (int, float))]
     rating = round(sum(scored) / len(scored)) if scored else None
     statuses = {c.get("status") for c in checks}
-    if "FAIL" in statuses:
+    if "FAIL" in statuses or "ERROR" in statuses:
         grade = "FAIL"
     elif "WARN" in statuses:
         grade = "WARN"

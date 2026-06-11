@@ -22,6 +22,9 @@ description: Latency check — measure how long rollouts take end to end. Requir
 2. From its `timing` block read `mean_s`, `p50_s`, `p90_s`, `max_s`, `total_s`
    and `calls`. (For Prime Intellect envs you may instead time `vf-eval <env>`
    end to end and report that — but prefer the shared cache.)
+   If the cache was generated with `--dummy` (`"dummy": true`, empty `timing`),
+   there is no real timing to judge — output **N/A** with justification
+   "dummy rollouts — no real timing".
 
 3. Judge the numbers in context: a per-rollout mean of a few seconds is normal
    for a hosted model; tens of seconds, heavy tail (p90 ≫ p50), or frequent
@@ -34,6 +37,6 @@ This check is informational — reserve **FAIL** for pathological cases (errors 
 most rollouts, or absurd latency). Score reflects throughput health.
 
 ```json
-{"name": "latency", "status": "PASS|WARN", "score": <int>,
+{"name": "latency", "status": "PASS|WARN|FAIL", "score": <int>,
  "justification": "<one line: mean/p90 per rollout, total, any error rate>"}
 ```

@@ -47,6 +47,15 @@ def test_build_scorecard_excludes_na_from_rating():
     assert card["grade"] == "WARN"
 
 
+def test_build_scorecard_error_grades_fail():
+    card = build_scorecard({"env_id": "e", "checks": [
+        {"name": "integrity", "status": "ERROR", "score": None, "justification": "crashed"},
+        {"name": "contamination", "status": "PASS", "score": 100, "justification": "clean"},
+    ]})
+    assert card["grade"] == "FAIL"
+    assert card["rating"] == 100         # only the check that produced a score
+
+
 def test_all_six_check_skills_present_and_valid():
     expected = {"env-audit", "integrity", "problem-alignment", "reward-design",
                 "latency", "rollout-quality", "contamination"}

@@ -12,7 +12,7 @@ No model needed — your judgement plus the dataset.
 
 ## Steps
 
-1. **Infer the domain.** From `/tmp/ea_inspect.json` (sample tasks + system
+1. **Infer the domain.** From `/tmp/envaudit_inspect.json` (sample tasks + system
    prompt), decide the domain: grade-school math, competition math, general
    coding, competitive programming, QA/trivia, reasoning, etc.
 

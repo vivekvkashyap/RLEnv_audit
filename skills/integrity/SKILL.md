@@ -11,9 +11,10 @@ This check needs no model. Use the `inspect` tool plus reading the source.
 
 ## Steps
 
-1. **Load.** Run `rlenv-audit inspect <env> -n 20 --out /tmp/ea_inspect.json` and
-   read it. If `loaded` is false → **FAIL**, score ≤ 20, justification = the
-   `error`. Stop here.
+1. **Load.** Read `/tmp/envaudit_inspect.json` if the orchestrator already wrote
+   it; otherwise run `rlenv-audit inspect <env> -n 20 --out /tmp/envaudit_inspect.json`.
+   If `loaded` is false → **FAIL**, score ≤ 20, justification = the `error`.
+   Stop here.
 
 2. **Dataset well-formed.** From the JSON, check:
    - `dataset_size.train` or `.eval` is non-zero;

@@ -1,6 +1,6 @@
-"""Shared fixtures. The adapter/determinism tests are integration tests: they
-load the real `gsm8k` Hub environment (install with `vf-install gsm8k -r`) and
-SKIP gracefully if it isn't available."""
+"""Shared fixtures. The adapter/tools tests are integration tests: they load the
+real `gsm8k` Hub environment (install with `vf-install gsm8k -r`) and SKIP
+gracefully if it isn't available."""
 
 import pytest
 

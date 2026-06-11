@@ -1,9 +1,10 @@
-"""Docker-isolated execution for the exploits check.
+"""Docker-isolated scoring for untrusted completions.
 
-The exploits check submits deliberately hostile completions to a reward function.
-For code/agentic environments the rubric *executes* the submitted code, so this
-must never run on the host. ``run_scoring`` ships the scoring into a locked-down
-container: no network, capped CPU/memory, read-only mounts.
+For code/agentic environments the rubric *executes* the submitted completion, so
+scoring adversarial or model-written code (e.g. the reward-design check's
+synthetic completions against a code env) must never run on the host.
+``run_scoring`` ships the scoring into a locked-down container: no network,
+capped CPU/memory, read-only mounts.
 
 Design notes (learned the hard way on the target box):
 
@@ -37,7 +38,7 @@ class SandboxError(Exception):
 
 
 def _error_tail(stderr: str) -> str:
-    """Pull a useful one-liner out of a container's stderr for a SKIP message —
+    """Pull a useful one-liner out of a container's stderr for an error message —
     the last real error line, ignoring noisy warnings."""
     lines = [
         ln.strip()
@@ -55,7 +56,7 @@ def _error_tail(stderr: str) -> str:
 
 def docker_available() -> tuple[bool, str]:
     """Return ``(ok, message)``. ``ok`` is False (with a reason) if Docker can't
-    be used — the exploits check turns this into a clean SKIP."""
+    be used — callers turn this into a clean skip rather than scoring on the host."""
     try:
         import docker
     except Exception as exc:  # pragma: no cover
@@ -127,10 +128,11 @@ def run_scoring(
     mem_limit: str = "2g",
     cpus: float = 2.0,
 ) -> dict[str, dict]:
-    """Score ``cheats`` against ``env_id`` inside Docker; return ``{label: {...}}``.
+    """Score ``cheats`` (untrusted completions, ``[{label, text}]``) against
+    ``env_id`` inside Docker; return ``{label: {...}}``.
 
     Each result dict carries ``reward`` (float) or ``error`` (str). Raises
-    ``SandboxError`` on any infrastructure failure so the caller can SKIP.
+    ``SandboxError`` on any infrastructure failure so the caller can skip.
     """
     import docker
 

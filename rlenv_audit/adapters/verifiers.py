@@ -1,5 +1,5 @@
 """Adapter: load a Prime Intellect Hub (`verifiers`) environment and normalize it
-into an internal ``EnvHandle`` that the checks consume.
+into an internal ``EnvHandle`` that the audit tools (``tools.py``) consume.
 
 This is the *only* module that imports ``verifiers``. Everything verifiers-0.1.14
 got surprising about is contained here (all verified against the installed
@@ -10,7 +10,7 @@ source — see DESIGN.md §3):
 * ``env.rubric`` is frequently a ``RubricGroup`` whose own ``.funcs`` is empty —
   the real reward functions surface via ``_get_reward_func_names()``.
 * Reward scoring is **async** and mutates a ``state`` dict in place. We expose a
-  synchronous ``score()`` so no check ever touches asyncio.
+  synchronous ``score()`` so no caller ever touches asyncio.
 * Some rubrics (e.g. ``MathRubric``) own a ``ProcessPoolExecutor`` that must be
   torn down or the interpreter can hang on exit.
 """
@@ -56,10 +56,10 @@ def load_handle(env_id: str, env_args: dict[str, Any] | None = None) -> "EnvHand
 class EnvHandle:
     """Normalized handle over a loaded verifiers environment.
 
-    Checks talk to this, not to verifiers. Holds a single persistent event loop
-    so the synchronous ``score()`` can drive the async rubric repeatedly (the
-    determinism check scores the same completion 5x) without per-call loop churn,
-    and so a rubric-owned ProcessPool survives across calls.
+    The tools talk to this, not to verifiers. Holds a single persistent event
+    loop so the synchronous ``score()`` can drive the async rubric repeatedly
+    (the score tool runs dozens of completions in one session) without per-call
+    loop churn, and so a rubric-owned ProcessPool survives across calls.
     """
 
     def __init__(self, env_id: str, env: Any):
@@ -88,8 +88,8 @@ class EnvHandle:
         Prefers the parser's own ``format()`` (e.g. ``XMLParser`` wraps the
         ``answer_field`` in its tags); verifies by round-trip. Returns ``None``
         if the parser can't be coaxed into round-tripping — callers then fall
-        back to generic format guesses. Used by the parser and exploit checks so
-        both adapt to each env's answer format instead of assuming one.
+        back to generic format guesses. Lets a caller adapt to each env's answer
+        format instead of assuming one.
         """
         parser = self.parser
         if parser is None:
@@ -109,10 +109,10 @@ class EnvHandle:
     def reward_sources(self, max_chars_per_func: int = 4000) -> dict[str, str]:
         """Source code of each reward function, best-effort (RubricGroup-aware).
 
-        Used by the design_review check to let a model read what the verifier
-        actually does. Functions whose source can't be retrieved (C extensions,
-        lambdas defined interactively) are reported as unavailable rather than
-        skipped silently.
+        Surfaced by the inspect tool so the auditing agent can read what the
+        verifier actually does. Functions whose source can't be retrieved
+        (C extensions, lambdas defined interactively) are reported as unavailable
+        rather than skipped silently.
         """
         import inspect
         import textwrap

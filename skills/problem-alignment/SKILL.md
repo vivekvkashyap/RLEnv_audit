@@ -19,8 +19,8 @@ Otherwise, this check needs no model — only your judgement over the env.
 
 ## Steps
 
-1. Read the inspect JSON (`/tmp/ea_inspect.json`): system prompt, sample tasks
-   (prompts + answers), and the reward function source.
+1. Read the inspect JSON (`/tmp/envaudit_inspect.json`): system prompt, sample
+   tasks (prompts + answers), and the reward function source.
 
 2. Hold three things against the user's problem statement and judge alignment:
    - **Dataset** — do the tasks actually exercise the claimed problem/domain/

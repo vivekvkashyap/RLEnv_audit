@@ -2,10 +2,10 @@
 host. It is invoked as ``python _sandbox_runner.py <payload.json>``.
 
 The payload (written by ``sandbox.py`` on the host) names the environment and a
-list of cheat completions. This script loads the env, scores each cheat through
-its rubric, and prints a single ``SBX_RESULT=<json>`` line to stdout. It runs
-with no network; if a cheat is hostile code that the rubric executes, it executes
-here, contained — that is the whole point of the sandbox.
+list of untrusted completions. This script loads the env, scores each completion
+through its rubric, and prints a single ``SBX_RESULT=<json>`` line to stdout. It
+runs with no network; if a completion is hostile code that the rubric executes,
+it executes here, contained — that is the whole point of the sandbox.
 """
 
 import json

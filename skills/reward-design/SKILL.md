@@ -13,9 +13,10 @@ them through the real reward function.
 
 ## Steps
 
-1. **Sample ~20 prompts.** From `/tmp/ea_inspect.json` take the sampled tasks
-   (re-run `rlenv-audit inspect <env> -n 20` if you need more). Note the answer
-   format the env expects (from the system prompt / parser type / reward source).
+1. **Sample ~20 prompts.** From `/tmp/envaudit_inspect.json` take the sampled
+   tasks (re-run `rlenv-audit inspect <env> -n 20` if you need more). Note the
+   answer format the env expects (from the system prompt / parser type / reward
+   source).
 
 2. **Write synthetic completions.** For each sampled prompt, author several
    completions in *this env's format*, covering:
@@ -26,10 +27,10 @@ them through the real reward function.
    - **format perturbations** (when a format spec exists) — the *right answer in a
      different format*, and the *right format with a wrong answer*.
    Build a JSON list `[{"prompt_index": i, "label": "...", "text": "..."}, ...]`
-   (~20–40 entries total) and save it to `/tmp/ea_completions.json`.
+   (~20–40 entries total) and save it to `/tmp/envaudit_completions.json`.
 
 3. **Score them.** Run
-   `rlenv-audit score <env> /tmp/ea_completions.json --out /tmp/ea_scores.json`
+   `rlenv-audit score <env> /tmp/envaudit_completions.json --out /tmp/envaudit_scores.json`
    and read the `(label, prompt_index, reward)` triples.
 
 4. **Judge two things:**

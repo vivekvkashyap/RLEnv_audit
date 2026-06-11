@@ -53,7 +53,7 @@ If there is no endpoint, mark **latency** and **rollout_quality** as `N/A`.
 
 ## 4. Assemble the scorecard
 
-Write all six results to a JSON file:
+Write all six results to `/tmp/envaudit_results.json`:
 
 ```json
 {"env_id": "<env>", "checks": [
