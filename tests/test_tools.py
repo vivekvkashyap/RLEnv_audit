@@ -90,6 +90,22 @@ def test_score_in_sandbox_infra_failure_tags_all_entries(monkeypatch):
     assert "docker died" in out[0]["error"]
 
 
+def test_credential_error_classification():
+    from rlenv_audit.tools import credential_error
+
+    # real-world shapes: gated HF dataset (the GPQA case), 401 endpoint, bad API key
+    assert credential_error(
+        "Dataset 'Idavidrein/gpqa' is a gated dataset on the Hub. "
+        "You must be authenticated to access it."
+    )
+    assert credential_error("Error code: 401 - invalid_api_key")
+    assert credential_error("403 Forbidden: access to dataset is restricted")
+    # genuine defects must NOT be tagged auth
+    assert not credential_error("No module named 'gpqa'")
+    assert not credential_error("KeyError: 'answer' while building the dataset")
+    assert not credential_error("connection refused")
+
+
 def test_build_scorecard_excludes_na_from_rating():
     card = build_scorecard({"env_id": "e", "checks": [
         {"name": "integrity", "status": "PASS", "score": 9, "justification": "x"},

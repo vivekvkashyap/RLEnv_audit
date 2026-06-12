@@ -26,7 +26,11 @@ none, output immediately:
    verifiers), e.g.
    `python -c "from datasets import load_dataset; ds = load_dataset('openai/gsm8k', 'main', split='test')"`.
    Use the split the user named; default to `test`, falling back to `train`.
-   If a dataset can't be loaded (bad id, gated, offline), say so in the
+   If a dataset fails to load because it is **gated / needs credentials**
+   (error mentions gated, 401/403, authentication, token), don't skip it
+   silently — **ask the user** for an HF token (and access approval) first,
+   set `HF_TOKEN`, and retry; only proceed without it if they decline. If a
+   dataset can't be loaded for other reasons (bad id, offline), say so in the
    justification and judge from the ones that did load; if none load, output
    **N/A** with that reason.
 

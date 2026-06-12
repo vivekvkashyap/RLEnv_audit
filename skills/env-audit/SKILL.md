@@ -83,10 +83,28 @@ Do whatever setup is missing — the user shouldn't have to prepare anything:
 ## 2. Load the environment once
 
 Run `rlenv-audit inspect <env> -n 20 --out /tmp/envaudit_inspect.json` and read
-it. If the env **installed but** `loaded` is false (it exists yet crashes on
-load), that is a genuine audit finding: the **integrity** check fails
-immediately — report that as the scorecard and stop (the other checks can't
-run).
+it.
+
+**Credentials gate — check this before judging anything.** If the inspect JSON
+carries `error_kind: "auth"` (or `dataset_error_kind: "auth"`), the failure is
+**missing credentials / gated access, not a broken env** — a gated dataset like
+GPQA is intentional. Do NOT score it, do NOT write a FAIL report. **Stop and
+ask the user**, naming exactly what's needed, e.g.: "The env's dataset
+`<org/name>` is gated on HuggingFace — request access at
+`https://huggingface.co/datasets/<org/name>` and give me a token (`HF_TOKEN`),
+or tell me to abort." When the user provides it, set it for every subsequent
+command in this audit (`export HF_TOKEN=...` / pass it into the env of each
+shell call), **re-run the inspect, and resume the audit from there**. Only if
+the user explicitly declines: mark every check **N/A** with justification
+"gated dataset — no credentials provided" and say the env could not be audited
+on this box — missing credentials are never an env defect. The same rule
+applies to any later step that fails credential-shaped (an endpoint returning
+401, a judge rubric needing an API key): ask, set, re-run that step.
+
+If the env **installed but** `loaded` is false for any *other* reason (it
+exists yet crashes on load), that is a genuine audit finding: the
+**integrity** check fails immediately — report that as the scorecard and stop
+(the other checks can't run).
 
 ## 3. Run the no-endpoint checks (1, 2, 3, 6)
 

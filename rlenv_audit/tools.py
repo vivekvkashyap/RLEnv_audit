@@ -23,18 +23,54 @@ from rlenv_audit.adapters.verifiers import DatasetLoadError, ScoringError, load_
 CACHE_DIR = Path(os.environ.get("RLENV_AUDIT_CACHE", ".rlenv_audit_cache"))
 
 
+# Substrings that mark a failure as missing credentials / gated access rather
+# than a defect in the environment itself. Deliberately broad: the consequence
+# of a match is only "ask the user for the credential", which is recoverable.
+_AUTH_ERROR_MARKS = (
+    "gated", "401", "403", "unauthorized", "forbidden", "authentication",
+    "authenticated", "credential", "access to dataset", "is restricted",
+    "access is restricted", "use_auth_token", "hf_token", "huggingface_hub.login",
+    "api key", "api_key", "invalid_api_key",
+)
+
+
+def credential_error(msg: str) -> bool:
+    """True if an error message looks like missing credentials / gated access.
+
+    Used to tag failures with ``error_kind: "auth"`` so the audit skills stop
+    and ask the user for the credential instead of grading the failure as an
+    environment defect — a gated dataset (e.g. GPQA) is intentional, not broken.
+    """
+    m = msg.lower()
+    return any(mark in m for mark in _AUTH_ERROR_MARKS)
+
+
+def _tag_auth(result: dict[str, Any], msg: str) -> dict[str, Any]:
+    """Attach ``error_kind``/``hint`` to a failure result when it is credential-shaped."""
+    if credential_error(msg):
+        result["error_kind"] = "auth"
+        result["hint"] = (
+            "this looks like missing credentials / gated access, not a broken env — "
+            "ask the user for the credential (e.g. HF_TOKEN after requesting access "
+            "on the Hub, or an API key), set it, and re-run this step"
+        )
+    return result
+
+
 # --------------------------------------------------------------------- inspect
 def inspect_env(env_id: str, n: int = 20) -> dict[str, Any]:
     """Load an environment and return a structured description of it.
 
     Consumed by the integrity, problem-alignment, reward-design and contamination
     skills. Captures load status so the integrity check sees failures as data,
-    not exceptions.
+    not exceptions. Credential-shaped failures (gated datasets, missing tokens)
+    are tagged ``error_kind: "auth"`` so the skills ask the user instead of
+    failing the env.
     """
     try:
         handle = load_handle(env_id)
     except Exception as exc:
-        return {"env_id": env_id, "loaded": False, "error": str(exc)}
+        return _tag_auth({"env_id": env_id, "loaded": False, "error": str(exc)}, str(exc))
 
     try:
         try:
@@ -84,6 +120,12 @@ def inspect_env(env_id: str, n: int = 20) -> dict[str, Any]:
         }
         if dataset_error:
             result["dataset_error"] = dataset_error
+            if credential_error(dataset_error):
+                result["dataset_error_kind"] = "auth"
+                result["hint"] = (
+                    "the dataset looks gated / needs credentials — ask the user for "
+                    "HF_TOKEN (and Hub access approval), set it, and re-run inspect"
+                )
         return result
     finally:
         handle.teardown()
@@ -403,7 +445,10 @@ def run_rollouts(
 
             model = OpenAI(base_url=endpoint, api_key=api_key, timeout=30).models.list().data[0].id
         except Exception as exc:
-            return {"env_id": env_id, "error": f"could not determine a model from {endpoint}: {exc}"}
+            return _tag_auth(
+                {"env_id": env_id, "error": f"could not determine a model from {endpoint}: {exc}"},
+                str(exc),
+            )
 
     import glob
     import subprocess
@@ -436,8 +481,11 @@ def run_rollouts(
     if not matches:
         tail = (proc.stderr or proc.stdout or "").strip()[-1000:]
         shutil.rmtree(scratch, ignore_errors=True)
-        return {"env_id": env_id,
-                "error": f"vf-eval produced no results (exit {proc.returncode}): {tail}"}
+        return _tag_auth(
+            {"env_id": env_id,
+             "error": f"vf-eval produced no results (exit {proc.returncode}): {tail}"},
+            tail,
+        )
 
     run_dir = Path(matches[-1]).parent
     rows = [json.loads(line) for line in (run_dir / "results.jsonl").read_text().splitlines() if line.strip()]

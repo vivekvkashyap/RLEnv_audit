@@ -21,10 +21,18 @@ condition that actually fires).
 
 1. **Load.** Read `/tmp/envaudit_inspect.json` if the orchestrator already wrote
    it; otherwise run `rlenv-audit inspect <env> -n 20 --out /tmp/envaudit_inspect.json`.
-   If `loaded` is false → **FAIL**, score ≤ 2, justification = the `error`.
-   Stop here. (A *nonexistent* env id is the orchestrator's problem — it stops
-   and asks the user before this check runs. `loaded: false` here means the env
-   exists and is installed but crashes on load: a genuine defect.)
+   - If the result carries `error_kind: "auth"` / `dataset_error_kind: "auth"`
+     (gated dataset, missing HF_TOKEN or API key): **do not FAIL** — this is the
+     audit box lacking authorization, not an env defect. Stop and ask the user
+     for the credential (name the gated dataset and where to request access);
+     once provided, set it, re-run inspect, and continue this check on the
+     fresh JSON. If the user declines, output **N/A** with justification
+     "gated dataset — no credentials provided".
+   - If `loaded` is false for any other reason → **FAIL**, score ≤ 2,
+     justification = the `error`. Stop here. (A *nonexistent* env id is the
+     orchestrator's problem — it stops and asks the user before this check
+     runs. `loaded: false` here means the env exists and is installed but
+     crashes on load: a genuine defect.)
 
 2. **Dataset well-formed.** From the JSON, check:
    - `dataset_size.train` or `.eval` is non-zero;
@@ -72,6 +80,6 @@ fail outright; missing reward / empty dataset → large deduction; no system
 prompt / minor convention slips → small). Return:
 
 ```json
-{"name": "integrity", "status": "PASS|WARN|FAIL", "score": <int>,
- "justification": "<one line: what's right, and the most important defect if any>"}
+{"name": "integrity", "status": "PASS|WARN|FAIL|N/A", "score": <int|null>,
+ "justification": "<one line: what's right, and the most important defect if any — or, for N/A, the credential the user declined to provide>"}
 ```
