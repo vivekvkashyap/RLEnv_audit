@@ -38,8 +38,15 @@ none, output immediately:
    - normalize the question text (lowercase, collapse whitespace, strip
      punctuation) and look for exact or near-exact matches (high n-gram
      containment), not just shared boilerplate;
+   - **catch paraphrases the n-grams miss**: for near-misses, compare the
+     *numbers, named entities, and the answer* — a reworded question with the
+     same figures and the same answer is the same instance. Judge a sample of
+     suspicious pairs yourself rather than trusting text overlap alone;
    - distinguish **same-template-different-instance** (fine) from **same
      instance** (contamination);
+   - check **both splits** of each provided dataset where they exist — env
+     tasks lifted from the benchmark's *train* split still poison eval-set
+     conclusions when the splits share templates;
    - report concrete matching pairs (env row ↔ dataset row) with counts;
    - note the train/eval distinction: an explicit *eval* env that *is* one of
      the provided datasets is expected — say so; a *training* dataset
@@ -47,7 +54,11 @@ none, output immediately:
 
 ## Output
 
-Score 0–10 where 10 = clean, lower = more overlap:
+Score 0–10 where 10 = clean, lower = more overlap. Anchor the score to the
+measured rate over the sampled rows: no same-instance matches → 9–10; isolated
+matches (≲5% of the sample) → 6–8 (WARN); systematic overlap (tens of percent)
+→ ≤5; the env *is* the user's eval set used for training → FAIL territory.
+State the sample size — 0 matches in 100 rows is evidence, not proof.
 
 ```json
 {"name": "contamination", "status": "PASS|WARN|FAIL", "score": <0-10>,
