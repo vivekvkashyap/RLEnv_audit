@@ -61,7 +61,16 @@ Do whatever setup is missing — the user shouldn't have to prepare anything:
      $VENV/bin/vf-install <account>/<env>`).
    - Sanity-check after install: `$VENV/bin/python -c "import <module>"` (module =
      the env name with `-`→`_`, last path segment), not the shell `python3`.
-   Note: most Hub envs need Python ≥ 3.11 — the uv tool venv usually already is.
+   Note: most Hub envs need Python ≥ 3.11; rlenv-audit itself requires ≥ 3.11
+   and is best installed on 3.12 so env floors are cleared in advance.
+   **Python-floor fallback** — if `vf-install <env>` (or `pip install` of the
+   env) fails with a `Requires-Python` conflict, don't stop: read the version
+   the env demands from the error, build a fresh venv that satisfies it, and
+   move the whole audit there —
+   `uv venv /tmp/envaudit_venv --python <X.Y> && uv pip install -p /tmp/envaudit_venv/bin/python rlenv-audit`
+   (uv downloads the CPython if missing, no root needed), then install the env
+   into it and use `/tmp/envaudit_venv/bin/` for **every** subsequent command
+   in this audit. Tell the user you did this and why.
 3. **The environment.** Try the inspect in section 2 below; if it fails with a
    load/import error, install the env into the venv found above and retry:
    `$VENV/bin/vf-install <account>/<env>` (e.g. `vf-install primeintellect/gsm8k`).

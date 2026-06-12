@@ -14,9 +14,13 @@ scorecard out of 10 with written feedback on what to improve.
 
 ```bash
 # Install the skills (pick one)
-uvx rlenv-audit install-skills
-pip install rlenv-audit && rlenv-audit install-skills
+uvx --python 3.12 rlenv-audit install-skills
+pip install rlenv-audit && rlenv-audit install-skills   # needs Python >= 3.11
 ```
+
+Why `--python 3.12`: a Hub env must install into the *same* interpreter as the
+audit tool, and envs declare Python *floors* (most `>=3.11`, some higher) — a
+3.12 venv clears nearly all of them in one go.
 
 Then ask your agent, giving the **full environment id** (`account/name`; bare
 names like `gsm8k` are ambiguous on the Hub), your **problem statement**, and

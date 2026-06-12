@@ -4,10 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "rlenv-audit"
-version = "0.5.0"
+version = "0.5.1"
 description = "rlenv_audit, a skill-based auditing system for Prime Intellect `verifiers` RL environments"
 readme = "README.md"
-requires-python = ">=3.10"
+# 3.11 floor: verifiers 0.1.14 allows >=3.10,<3.14, but most Hub envs require
+# >=3.11 — and the env must install into the SAME interpreter as the audit
+# tool (verifiers imports it). Install on 3.12 to clear nearly every env floor.
+requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Vivek", email = "vivekvkashyap10@gmail.com" }]
 keywords = ["rl", "reinforcement-learning", "verifiers", "prime-intellect", "audit", "reward-hacking", "skills"]
