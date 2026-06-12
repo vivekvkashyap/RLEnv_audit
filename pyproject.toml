@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "rlenv-audit"
-version = "0.5.1"
+version = "0.5.2"
 description = "rlenv_audit, a skill-based auditing system for Prime Intellect `verifiers` RL environments"
 readme = "README.md"
 # 3.11 floor: verifiers 0.1.14 allows >=3.10,<3.14, but most Hub envs require

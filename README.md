@@ -72,9 +72,8 @@ The main thing to improve is contamination: 3 of the sampled training
 instances near-match the openai/gsm8k test split you asked me to check, so
 benchmark gains may partly be memorization; either dedupe against that test
 split or report on a different set. Second, the parser only accepts \boxed{}
-answers; consider
-accepting plain final-line answers too, or the policy gets zero reward for
-correct-but-unformatted output early in training.
+answers; consider accepting plain final-line answers too, or the policy gets
+zero reward for correct-but-unformatted output early in training.
 ```
 
 - **Final score**: a weighted average out of 10 over the checks that ran (N/A
@@ -99,6 +98,12 @@ correct-but-unformatted output early in training.
 | 5 | **rollout quality** | model endpoint | Reads actual rollouts and judges whether the env is set up well in practice: system prompt right, outputs sensible, obvious env-caused failure modes. |
 | 6 | **contamination** | HF dataset ids | Compares the env's dataset against the HuggingFace datasets *you* name (e.g. `openai/gsm8k`) and flags matching / near-matching instances. **N/A** (carries no weight) if you don't provide any. |
 
+**Shared rollouts (checks 4 & 5).** Both need a model, so rlenv_audit runs
+rollouts **once** through verifiers' own `vf-eval` engine (8 rollouts over ~20
+samples, scored + timed, cached) and both checks read that single cache — the
+rollouts follow the env's real generation path, so multi-turn / tool envs roll
+out correctly. No endpoint → 4 & 5 are **N/A**.
+
 ## Repair (opt-in)
 
 If the audit comes back WARN/FAIL, ask for repairs explicitly — e.g. *"rewrite
@@ -112,12 +117,6 @@ flagged loudly, every fix is validated against the repaired copy, and a
 `REPAIRS.md` documents what changed and why. Re-auditing the repaired copy and
 publishing it are yours.
 
-**Shared rollouts (checks 4 & 5).** Both need a model, so rlenv_audit runs
-rollouts **once** through verifiers' own `vf-eval` engine (8 rollouts over ~20
-samples, scored + timed, cached) and both checks read that single cache — the
-rollouts follow the env's real generation path, so multi-turn / tool envs roll
-out correctly. No endpoint → 4 & 5 are **N/A**.
-
 ## Layout
 
 ```
@@ -126,8 +125,10 @@ skills/                 the six checks + the env-audit orchestrator + env-repair
 rlenv_audit/
   adapters/verifiers.py EnvHandle, the only code that touches verifiers
   tools.py              inspect / score / rollouts / scorecard
-  sandbox.py            Docker isolation (for executing risky completions)
+  sandbox.py            Docker isolation for scoring untrusted completions
+  _sandbox_runner.py    the shim that runs INSIDE the container and scores
   cli.py                the rlenv-audit / env-audit CLI (+ install-skills)
+DESIGN.md               architecture notes (adapter contract, verifiers quirks)
 REWARD_DESIGN.md        the design guide the judgment checks cite
 ```
 

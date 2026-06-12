@@ -59,7 +59,7 @@ EnvHandle:
     reward_func_names() / reward_sources()    # names + getsource of reward fns (RubricGroup-aware)
     system_prompt() / module_file()           # env framing + source file
     dataset(n) / dataset_size()               # normalized rows, train↔eval fallback
-    score(text, prompt, answer, columns) -> (reward, metrics)   # sync over async scoring
+    score(text, prompt, answer, info, columns) -> (reward, metrics)  # sync over async scoring
     canonical_answer(answer) / teardown()
 ```
 
@@ -74,10 +74,19 @@ Four commands, each JSON-in/JSON-out:
 - `rlenv-audit inspect <env> -n 20` → `{loaded, env_type, parser_type, module_file,
   dataset_size, system_prompt, reward_funcs:[{name,weight,source}], sample:[...]}`.
   Load failures are captured as `{loaded: false, error}` so the integrity check
-  sees them as data. Used by checks 1, 2, 3, 6.
-- `rlenv-audit score <env> completions.json` → scores agent-written
-  `[{prompt_index, label, text}]` through the reward function. Used by check 3.
-- `rlenv-audit rollouts <env> --endpoint --model -n 20 -k 8` (or `--dummy`) →
+  sees them as data; credential-shaped failures (gated datasets, missing
+  tokens) are additionally tagged `error_kind: "auth"` so the skills ask the
+  user for the credential instead of failing the env. Used by checks 1, 2, 3, 6.
+- `rlenv-audit score <env> completions.json [--sandbox auto|on|off]` → scores
+  agent-written `[{prompt_index, label, text}]` through the reward function.
+  Because a code env's rubric *executes* the completion, scoring defaults to a
+  Docker sandbox (`auto`: container when Docker is reachable, host otherwise —
+  flagged either way; `on`: refuse host execution entirely). Every result
+  carries a `sandbox` block, and every per-entry error an `error_kind`
+  (`"reward"` = the rubric ran and raised, `"infra"` = could not execute) so
+  the reward-design check can tell a broken reward from a missing backend.
+  Used by check 3.
+- `rlenv-audit rollouts <env> [--endpoint --model] -n 20 -k 8` (or `--dummy`) →
   generates 8 rollouts over ~20 tasks **once** by driving verifiers' own
   `vf-eval` engine (so rollouts follow the env's real generation path — multi-turn
   and tool-use envs included — and the env's own sampling args apply), then
@@ -85,10 +94,24 @@ Four commands, each JSON-in/JSON-out:
   per-rollout `text`, `reward`, `latency_s`, `truncated`, `stop_reason`,
   `output_tokens` plus timing percentiles. Checks 4 and 5 share this cache.
   `vf-eval` is a client over an OpenAI-compatible endpoint; it does not start a
-  model.
+  model. With no endpoint given (and `OPENAI_BASE_URL` unset) it probes the
+  default vLLM address `http://localhost:8000/v1` and uses it if a server
+  answers — surfaced via `endpoint_discovered`, never silent; the model name is
+  auto-detected from the server either way.
 - `rlenv-audit scorecard results.json` → computes the overall grade + rating
   (weighted average out of 10 over the checks that ran; N/A excluded) and
   renders the table + feedback.
+
+**Untrusted completions and the sandbox** (`sandbox.py` + `_sandbox_runner.py`).
+The reward-design check feeds *agent-written* completions to the env's rubric,
+and for code envs the rubric executes them — so scoring ships into a
+locked-down Docker container: no network, capped CPU/memory, the project venv
+and HF cache bind-mounted read-only, the dataset row passed in via payload.
+All rows and their completions batch into **one** container (the env loads
+once, not per row). The in-container shim prints a single `SBX_RESULT=` line;
+the host parses the **last** such line — a completion that prints a forged
+marker during scoring can never beat the shim's real one, and an unparseable
+line becomes a `SandboxError`, not a crash.
 
 ## 6. The six checks (`skills/`)
 
@@ -109,11 +132,24 @@ Four commands, each JSON-in/JSON-out:
    no weight — when none are given. No endpoint.
 
 The **env-audit** orchestrator skill gathers inputs (fully qualified env id,
-problem statement, optional endpoint, optional contamination datasets), runs
-the no-endpoint checks, generates the shared
-rollouts once if an endpoint is given, runs the endpoint checks from that cache,
-assembles the scorecard, and saves the report (`report.md` + `report.json`)
-under `rlenv_audit_reports/<account>__<name>/`.
+problem statement, optional endpoint — probing the default vLLM address before
+asking — optional contamination datasets), runs the no-endpoint checks,
+generates the shared rollouts once if an endpoint is available, runs the
+endpoint checks from that cache, assembles the scorecard, and saves the report
+(`report.md` + `report.json`) under `rlenv_audit_reports/<account>__<name>/`.
+Two hardening rules live here: a **credentials gate** (a gated dataset or
+401-ing endpoint is never graded — the agent asks the user for the token, sets
+it, and resumes; only an explicit decline yields N/A) and a **Python-floor
+fallback** (a `Requires-Python` conflict at `vf-install` triggers building a
+satisfying venv with uv and moving the whole audit there).
+
+A seventh skill, **env-repair**, is an opt-in companion, not a check: on an
+explicit user request it consumes `report.json`, applies the *mechanical*
+fixes to a local copy under `rlenv_audit_repairs/<account>__<name>/` (never
+the installed package, never the Hub), defers design-level findings as written
+recommendations, flags reward-function edits loudly, validates each fix
+against the repaired copy via PYTHONPATH shadowing, and leaves re-auditing and
+publishing to the user.
 
 ## 7. Scoring model
 
@@ -122,8 +158,10 @@ results object also carries a written `feedback` field (1–3 paragraphs: what t
 env does right, then what to improve, in priority order).
 
 - **status**: PASS (~7.5–10) / WARN (~4–7.4) / FAIL (~0–3.9) / **N/A**
-  (documented skips: no endpoint → latency, rollout_quality; no user-provided
-  datasets → contamination).
+  (documented skips only: no endpoint → latency, rollout_quality; no
+  user-provided datasets → contamination; no execution backend for the reward →
+  reward_design; credentials explicitly declined → integrity. Infrastructure
+  the audit box lacks is never graded as an env defect).
 - **rating**: a weighted average out of 10 over the checks that actually ran
   (N/A carries no weight). Latency (informational) and contamination
   (user-opt-in) weigh 0.5; the other four checks weigh 1.0.
@@ -150,6 +188,11 @@ on first run. The user types one install command once, then just "audit <env>".
 
 ## 9. Honest scope
 
-Six checks, one format (`verifiers`), agent-driven. Determinism lives in the
-tools; judgment lives in the skills. No plugin system, no config framework — the
-`adapters/` + `skills/` seams make extension possible without building it now.
+Six checks (plus the opt-in repair), one format (`verifiers`), agent-driven.
+Determinism lives in the tools; judgment lives in the skills. No plugin system,
+no config framework — the `adapters/` + `skills/` seams make extension possible
+without building it now. Known limitation: the `verifiers==0.1.14` pin means
+envs requiring `verifiers>=0.2` cannot be audited yet (the env must share the
+audit interpreter); the agreed path, when demand appears, is detect-and-explain
+first, then a version-aware adapter behind a relaxed pin, then generalizing the
+sandbox shim into a full out-of-process env boundary.

@@ -5,7 +5,7 @@
     {
       "name": "env-audit",
       "source": "./",
-      "description": "Audit a verifiers RL environment before training on it: six agent-run checks, one scorecard. Ask: \"Audit primeintellect/gsm8k\"."
+      "description": "Audit a verifiers RL environment before training on it: six agent-run checks, one scorecard, plus an opt-in env-repair skill that applies the feedback to a local copy. Ask: \"Audit primeintellect/gsm8k\"."
     }
   ]
 }
