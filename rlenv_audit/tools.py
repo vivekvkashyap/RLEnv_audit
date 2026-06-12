@@ -333,6 +333,21 @@ def _dummy_rollouts(env_id: str, n_samples: int, k: int, model: str | None) -> d
         handle.teardown()
 
 
+# Where a local vLLM server serves by default; probed when no endpoint is given.
+DEFAULT_VLLM_ENDPOINT = "http://localhost:8000/v1"
+
+
+def _endpoint_alive(url: str, api_key: str = "EMPTY", timeout: float = 3.0) -> bool:
+    """True if an OpenAI-compatible server answers ``/models`` at ``url``."""
+    try:
+        from openai import OpenAI
+
+        OpenAI(base_url=url, api_key=api_key, timeout=timeout).models.list()
+        return True
+    except Exception:
+        return False
+
+
 def run_rollouts(
     env_id: str,
     *,
@@ -369,8 +384,18 @@ def run_rollouts(
 
     endpoint = endpoint or os.environ.get("OPENAI_BASE_URL")
     api_key = api_key or os.environ.get("OPENAI_API_KEY") or "EMPTY"
+    # No endpoint named anywhere: probe the default local vLLM address before
+    # giving up. Auto-discovery is surfaced in the result (`endpoint_discovered`)
+    # so callers can tell the user which server was used.
+    discovered = False
+    if not endpoint and _endpoint_alive(DEFAULT_VLLM_ENDPOINT, api_key):
+        endpoint, discovered = DEFAULT_VLLM_ENDPOINT, True
     if not endpoint:
-        return {"env_id": env_id, "error": "no model endpoint configured and --dummy not set"}
+        return {
+            "env_id": env_id,
+            "error": "no model endpoint configured (none given, OPENAI_BASE_URL unset, "
+            f"nothing answering at {DEFAULT_VLLM_ENDPOINT}) and --dummy not set",
+        }
 
     if not model:
         try:
@@ -454,6 +479,7 @@ def run_rollouts(
 
     out = {
         "env_id": env_id, "model": model, "endpoint": endpoint,
+        "endpoint_discovered": discovered,
         "engine": "vf-eval", "dummy": False,
         "n_samples": len(by_example), "k": k, "max_concurrent": max_concurrent,
         "timing": _percentiles(latencies),

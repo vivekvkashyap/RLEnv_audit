@@ -27,11 +27,17 @@ contamination against:
 
 ```text
 Audit primeintellect/gsm8k. I'm trying to train a grade-school math solver.
-Use my vLLM endpoint at http://localhost:8000/v1, model Qwen2.5-7B.
 Check contamination against openai/gsm8k.
 ```
 
 *(in Claude Code or Codex)*
+
+If a vLLM server is up on the default address (`http://localhost:8000/v1`), the
+audit finds it by itself — endpoint and model name are auto-detected, and it
+tells you what it found. Serving somewhere else? Name it in the prompt:
+`Use my vLLM endpoint at http://localhost:8000/v1, model Qwen2.5-7B.` An
+explicitly named endpoint always wins; with no endpoint given and nothing on
+the default address, checks 4 & 5 are N/A.
 
 ## Output
 
@@ -46,11 +52,11 @@ score and written feedback:
 │ integrity         │ PASS   │   9.5 │ loads, reward callable, well-formed     │
 │ problem_alignment │ PASS   │   9.0 │ dataset/reward match the stated goal    │
 │ reward_design     │ PASS   │   8.8 │ discriminates; matches judgment 18/20   │
-│ latency           │ N/A    │     — │ no endpoint                             │
-│ rollout_quality   │ N/A    │     — │ no endpoint                             │
+│ latency           │ PASS   │   8.5 │ mean 2.1s / p90 4.3s, no errors         │
+│ rollout_quality   │ PASS   │   8.0 │ prompt clear; 6% truncated rollouts     │
 │ contamination     │ WARN   │   6.0 │ 3 near-matches with openai/gsm8k test   │
 └───────────────────┴────────┴───────┴─────────────────────────────────────────┘
-overall: WARN   rating: 8.7/10
+overall: WARN   rating: 8.5/10
 
 feedback
 The environment is solidly built: it loads cleanly, the reward is a real
@@ -90,8 +96,10 @@ correct-but-unformatted output early in training.
 | 6 | **contamination** | HF dataset ids | Compares the env's dataset against the HuggingFace datasets *you* name (e.g. `openai/gsm8k`) and flags matching / near-matching instances. **N/A** (carries no weight) if you don't provide any. |
 
 **Shared rollouts (checks 4 & 5).** Both need a model, so rlenv_audit runs
-rollouts **once** (8 rollouts over ~20 samples, scored + timed, cached) and both
-checks read that single cache. No endpoint → 4 & 5 are **N/A**.
+rollouts **once** through verifiers' own `vf-eval` engine (8 rollouts over ~20
+samples, scored + timed, cached) and both checks read that single cache — the
+rollouts follow the env's real generation path, so multi-turn / tool envs roll
+out correctly. No endpoint → 4 & 5 are **N/A**.
 
 ## Layout
 

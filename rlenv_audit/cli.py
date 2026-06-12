@@ -73,7 +73,9 @@ def score(env_id: str, completions_json: str, out: str | None, sandbox: str) -> 
 
 @main.command()
 @click.argument("env_id")
-@click.option("--endpoint", default=None, help="OpenAI-compatible base URL.")
+@click.option("--endpoint", default=None,
+              help="OpenAI-compatible base URL (else OPENAI_BASE_URL, else probes "
+              "the default vLLM address http://localhost:8000/v1).")
 @click.option("--api-key", default=None, help="API key (else OPENAI_API_KEY, else EMPTY for vLLM).")
 @click.option("--model", default=None, help="model name (else first model served by the endpoint).")
 @click.option("-n", "--samples", default=20, help="tasks (examples) to roll out.")

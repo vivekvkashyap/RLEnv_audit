@@ -60,6 +60,11 @@ matches (≲5% of the sample) → 6–8 (WARN); systematic overlap (tens of perc
 → ≤5; the env *is* the user's eval set used for training → FAIL territory.
 State the sample size — 0 matches in 100 rows is evidence, not proof.
 
+Any number of datasets may be provided — audit **every one independently** and
+score on the **worst offender**: four clean datasets must not dilute one
+contaminated one. The justification names each dataset with its match count
+(e.g. `openai/gsm8k: 3 near-matches; hendrycks/MATH: clean; ...`).
+
 ```json
 {"name": "contamination", "status": "PASS|WARN|FAIL", "score": <0-10>,
  "justification": "<one line: datasets checked, matches found (counts) or clean>"}

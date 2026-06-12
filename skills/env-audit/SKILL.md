@@ -26,8 +26,14 @@ Ask the user (or take from their request) and confirm:
    from the env, and never start the audit without it.
 3. **model endpoint** (optional) — an OpenAI-compatible endpoint + model name, or
    "dummy", or none. Enables checks 4 & 5; if absent, both are **N/A**. If the
-   user didn't mention one, ask once: "Do you have a model endpoint for the
-   rollout checks, or should I skip them?"
+   user gave one, use exactly that. If they didn't, **probe the default vLLM
+   address first**: `curl -s -m 3 http://localhost:8000/v1/models`. If it
+   answers, *tell the user* — "found a model server at http://localhost:8000/v1,
+   using it for the rollout checks" — and proceed with it (the model name is
+   auto-detected from the server). Only if nothing answers there, ask once:
+   "No model server found at the default vLLM address — do you have an endpoint
+   for the rollout checks, or should I skip them?" (`rlenv-audit rollouts` does
+   the same probe itself when called with no `--endpoint`.)
 4. **contamination datasets** (optional) — HuggingFace dataset ids or links
    (e.g. `openai/gsm8k`) to check the env's dataset against. Enables check 6;
    if none are given, contamination is **N/A** and carries no weight. Never
