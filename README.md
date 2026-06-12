@@ -95,6 +95,19 @@ correct-but-unformatted output early in training.
 | 5 | **rollout quality** | model endpoint | Reads actual rollouts and judges whether the env is set up well in practice: system prompt right, outputs sensible, obvious env-caused failure modes. |
 | 6 | **contamination** | HF dataset ids | Compares the env's dataset against the HuggingFace datasets *you* name (e.g. `openai/gsm8k`) and flags matching / near-matching instances. **N/A** (carries no weight) if you don't provide any. |
 
+## Repair (opt-in)
+
+If the audit comes back WARN/FAIL, ask for repairs explicitly — e.g. *"rewrite
+the env based on the feedback"*. The `env-repair` skill applies the
+**mechanical** fixes (parser too strict, reward crashing on edge inputs,
+missing system prompt, unreachable termination, …) to a **local copy** under
+`rlenv_audit_repairs/<account>__<name>/` — it never touches the installed
+package or the Hub. Design-level findings (misaligned dataset, contamination,
+difficulty) are left as written recommendations, reward-function edits are
+flagged loudly, every fix is validated against the repaired copy, and a
+`REPAIRS.md` documents what changed and why. Re-auditing the repaired copy and
+publishing it are yours.
+
 **Shared rollouts (checks 4 & 5).** Both need a model, so rlenv_audit runs
 rollouts **once** through verifiers' own `vf-eval` engine (8 rollouts over ~20
 samples, scored + timed, cached) and both checks read that single cache — the
@@ -104,7 +117,7 @@ out correctly. No endpoint → 4 & 5 are **N/A**.
 ## Layout
 
 ```
-skills/                 the six checks + the env-audit orchestrator (SKILL.md each)
+skills/                 the six checks + the env-audit orchestrator + env-repair (SKILL.md each)
 .claude-plugin/         plugin + marketplace manifests (repo doubles as a Claude Code plugin)
 rlenv_audit/
   adapters/verifiers.py EnvHandle, the only code that touches verifiers

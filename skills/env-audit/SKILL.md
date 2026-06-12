@@ -158,7 +158,11 @@ and write two files:
      / justification) plus the final `rating: N.N/10`;
    - **Feedback**: the same feedback paragraphs from the results JSON.
 
-End by telling the user where the report was saved.
+End by telling the user where the report was saved. If the grade is **WARN or
+FAIL**, you may offer once: "Want me to apply the mechanical fixes to a local
+copy? (`env-audit-repair` — it never touches the installed env or the Hub.)"
+Run the repair skill only if the user explicitly says yes — never as part of
+the audit itself.
 
 ## Rules
 

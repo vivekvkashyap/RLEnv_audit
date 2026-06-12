@@ -31,3 +31,4 @@ survey_reports/
 survey.json
 .venv311/
 rlenv_audit_reports/
+rlenv_audit_repairs/
