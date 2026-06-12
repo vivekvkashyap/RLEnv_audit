@@ -119,8 +119,7 @@ def _scratch_base() -> Path:
 
 def run_scoring(
     env_id: str,
-    task: dict[str, Any],
-    cheats: list[dict[str, str]],
+    items: list[dict[str, Any]],
     *,
     env_args: dict[str, Any] | None = None,
     image: str = DEFAULT_IMAGE,
@@ -128,10 +127,14 @@ def run_scoring(
     mem_limit: str = "2g",
     cpus: float = 2.0,
 ) -> dict[str, dict]:
-    """Score ``cheats`` (untrusted completions, ``[{label, text}]``) against
-    ``env_id`` inside Docker; return ``{label: {...}}``.
+    """Score untrusted completions against ``env_id`` inside ONE Docker
+    container; return ``{label: {...}}`` flat across all items.
 
-    Each result dict carries ``reward`` (float) or ``error`` (str). Raises
+    ``items`` is ``[{"task": {...}, "cheats": [{"label", "text"}, ...]}, ...]``
+    — each task is one dataset row plus the completions aimed at it; labels must
+    be unique across the whole call. Batching every row into a single container
+    means the env (imports, rubric, dataset machinery) loads once, not once per
+    row. Each result dict carries ``reward`` (float) or ``error`` (str). Raises
     ``SandboxError`` on any infrastructure failure so the caller can skip.
     """
     import docker
@@ -142,8 +145,7 @@ def run_scoring(
         payload = {
             "env_id": env_id,
             "env_args": env_args or {},
-            "task": task,
-            "cheats": cheats,
+            "items": items,
         }
         (scratch / "payload.json").write_text(json.dumps(payload))
         volumes[str(scratch)] = {"bind": "/sbx", "mode": "ro"}
@@ -156,7 +158,10 @@ def run_scoring(
         # site-packages (verifiers, the env, rlenv_audit) are importable.
         venv_python = sys.executable
 
-        client = docker.from_env()
+        try:
+            client = docker.from_env()
+        except Exception as exc:
+            raise SandboxError(f"failed to connect to the docker daemon: {exc}") from exc
         try:
             container = client.containers.run(
                 image,
@@ -198,9 +203,20 @@ def run_scoring(
             except Exception:
                 pass
 
-        for line in logs.splitlines():
+        # Scan from the END: the runner prints its result line last, after all
+        # scoring. The rubric *executes* the untrusted completions, and their
+        # code shares the container's stdout — a completion that prints its own
+        # forged "SBX_RESULT=" line during scoring must never win over the real
+        # one. A line that matches but doesn't parse is treated as infrastructure
+        # failure, not allowed to crash the caller.
+        for line in reversed(logs.splitlines()):
             if line.startswith(_RESULT_MARKER):
-                return json.loads(line[len(_RESULT_MARKER):])
+                try:
+                    return json.loads(line[len(_RESULT_MARKER):])
+                except ValueError as exc:
+                    raise SandboxError(
+                        f"unparseable sandbox result line (corrupted or forged output): {exc}"
+                    ) from exc
         raise SandboxError(
             f"env failed to load/score in the sandbox (exit {status}): {_error_tail(errs)}"
         )

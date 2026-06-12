@@ -111,28 +111,32 @@ def score_completions(
       rather than executing untrusted code on the host).
     * ``"off"`` — score on the host (the old behaviour; fine for non-code envs).
 
-    The returned dict carries a top-level ``sandbox`` block
-    (``{requested, used, available, reason}``) so the reward-design skill can
-    tell "the reward function is broken" apart from "no execution backend here".
+    Every return carries a top-level ``sandbox`` block
+    (``{requested, used, available, reason}``), and every per-entry ``error``
+    comes with an ``error_kind`` — ``"reward"`` (the rubric ran and raised) or
+    ``"infra"`` (the completion could not be executed at all) — so the
+    reward-design skill can tell "the reward function is broken" apart from
+    "no execution backend here" without parsing error strings.
     """
+    use_sandbox, sb = _decide_sandbox(sandbox)
+    # Required isolation but no backend: refuse before even loading the env —
+    # never execute untrusted completions on the host. This is the signal the
+    # reward-design check turns into N/A, not FAIL.
+    if sb["requested"] == "on" and not use_sandbox:
+        return {
+            "env_id": env_id, "n": 0, "results": [], "sandbox": sb,
+            "error": f"sandbox required but unavailable: {sb['reason']}",
+        }
+
     handle = load_handle(env_id)
     try:
         max_idx = max((int(c.get("prompt_index", 0)) for c in completions), default=0)
         try:
             rows = handle.dataset(n=max_idx + 1)
         except DatasetLoadError as exc:
-            return {"env_id": env_id, "error": str(exc)}
+            return {"env_id": env_id, "error": str(exc), "sandbox": sb}
         if not rows:
-            return {"env_id": env_id, "error": "environment exposes no dataset"}
-
-        use_sandbox, sb = _decide_sandbox(sandbox)
-        # Required isolation but no backend: refuse to execute on the host. This
-        # is the signal the reward-design check turns into N/A, not FAIL.
-        if sb["requested"] == "on" and not use_sandbox:
-            return {
-                "env_id": env_id, "n": 0, "results": [], "sandbox": sb,
-                "error": f"sandbox required but unavailable: {sb['reason']}",
-            }
+            return {"env_id": env_id, "error": "environment exposes no dataset", "sandbox": sb}
 
         if use_sandbox:
             results = _score_in_sandbox(env_id, completions, rows)
@@ -166,13 +170,23 @@ def _decide_sandbox(mode: str) -> tuple[bool, dict[str, Any]]:
                    "reason": f"docker unavailable, scored on host: {msg}"}
 
 
+def _row_index(c: dict, rows: list[dict]) -> int:
+    """Clamp a completion's ``prompt_index`` into the loaded row range."""
+    return max(0, min(int(c.get("prompt_index", 0)), len(rows) - 1))
+
+
+def _result_entry(idx: int, c: dict) -> dict[str, Any]:
+    """The shared shape of one scored-completion result (host and sandbox paths)."""
+    return {"prompt_index": idx, "label": c.get("label", ""), "text": c.get("text", "")}
+
+
 def _score_on_host(handle: Any, completions: list[dict], rows: list[dict]) -> list[dict]:
     """Score each completion through the env's rubric on the host (no isolation)."""
     results = []
     for c in completions:
-        idx = max(0, min(int(c.get("prompt_index", 0)), len(rows) - 1))
+        idx = _row_index(c, rows)
         row = rows[idx]
-        entry = {"prompt_index": idx, "label": c.get("label", ""), "text": c.get("text", "")}
+        entry = _result_entry(idx, c)
         try:
             reward, metrics = handle.score(
                 c.get("text", ""), row["prompt"], row["answer"], row["info"], row.get("raw")
@@ -180,47 +194,65 @@ def _score_on_host(handle: Any, completions: list[dict], rows: list[dict]) -> li
             entry["reward"] = reward
             entry["metrics"] = metrics
         except ScoringError as exc:
+            # The rubric ran and raised — a reward-side failure, not infrastructure.
             entry["error"] = str(exc)
+            entry["error_kind"] = "reward"
         results.append(entry)
     return results
 
 
 def _score_in_sandbox(env_id: str, completions: list[dict], rows: list[dict]) -> list[dict]:
-    """Score completions inside Docker, one container per dataset row (a single
-    container scores all the completions aimed at that row). The dataset is read
-    on the host and the row is passed in via the payload, so the container never
+    """Score all completions in ONE Docker container: every row's task and its
+    completions ship in a single payload, so the env (imports, rubric, dataset
+    machinery) loads once in the container rather than once per row. The dataset
+    is read on the host and passed in via the payload, so the container never
     needs the network — only the env's rubric, which may execute the code."""
     from rlenv_audit.sandbox import SandboxError, run_scoring
 
-    by_row: dict[int, list[tuple[int, dict]]] = {}
-    for pos, c in enumerate(completions):
-        idx = max(0, min(int(c.get("prompt_index", 0)), len(rows) - 1))
-        by_row.setdefault(idx, []).append((pos, c))
+    if not completions:
+        return []
 
-    results: list[dict | None] = [None] * len(completions)
-    for idx, items in by_row.items():
+    idx_of = [_row_index(c, rows) for c in completions]
+    by_row: dict[int, list[int]] = {}
+    for pos, idx in enumerate(idx_of):
+        by_row.setdefault(idx, []).append(pos)
+
+    # Use the list position as the sandbox label so duplicate human labels
+    # (two "correct"s for one row) don't collide on the way back.
+    items = []
+    for idx, positions in by_row.items():
         row = rows[idx]
-        task = {
-            "prompt": row["prompt"], "answer": row["answer"],
-            "info": row["info"], "columns": row.get("raw") or {},
-        }
-        # Use the list position as the sandbox label so duplicate human labels
-        # (two "correct"s for one row) don't collide on the way back.
-        cheats = [{"label": str(pos), "text": c.get("text", "")} for pos, c in items]
-        try:
-            scored = run_scoring(env_id, task, cheats)
-        except SandboxError as exc:
-            scored = {str(pos): {"error": f"sandbox: {exc}"} for pos, _ in items}
-        for pos, c in items:
-            r = scored.get(str(pos), {"error": "sandbox: no result returned"})
-            entry = {"prompt_index": idx, "label": c.get("label", ""), "text": c.get("text", "")}
-            if "error" in r:
-                entry["error"] = r["error"]
-            else:
-                entry["reward"] = r.get("reward")
-                entry["metrics"] = r.get("metrics", {})
-            results[pos] = entry
-    return [r for r in results if r is not None]
+        items.append({
+            "task": {"prompt": row["prompt"], "answer": row["answer"],
+                     "info": row["info"], "columns": row.get("raw") or {}},
+            "cheats": [{"label": str(pos), "text": completions[pos].get("text", "")}
+                       for pos in positions],
+        })
+
+    infra_error = None
+    try:
+        # One container scores everything; give it headroom that scales with
+        # how many completions it must execute.
+        scored = run_scoring(env_id, items, timeout_s=max(300, 30 * len(completions)))
+    except SandboxError as exc:
+        scored, infra_error = {}, f"sandbox: {exc}"
+
+    results = []
+    for pos, c in enumerate(completions):
+        entry = _result_entry(idx_of[pos], c)
+        r = scored.get(str(pos))
+        if r is None:
+            entry["error"] = infra_error or "sandbox: no result returned"
+            entry["error_kind"] = "infra"
+        elif "error" in r:
+            # The rubric ran inside the container and raised on this completion.
+            entry["error"] = r["error"]
+            entry["error_kind"] = "reward"
+        else:
+            entry["reward"] = r.get("reward")
+            entry["metrics"] = r.get("metrics", {})
+        results.append(entry)
+    return results
 
 
 # -------------------------------------------------------------------- rollouts

@@ -36,20 +36,21 @@ them through the real reward function.
    — model-written code never runs on the host. The output carries a top-level
    `sandbox` block (`{requested, used, available, reason}`); glance at it.
 
-   When entries come back with an `error` instead of a reward, **classify the
-   error before grading**:
-   - **Reward-function defect** — the rubric ran but mishandled an ordinary
-     completion (empty text, long text, a near-miss): a real defect. Quote it. If
-     **every** entry is this kind of error, the check is a **FAIL**.
-   - **No execution backend** — the rubric couldn't run *anywhere*, so nothing
-     about the reward signal was actually tested. This is **N/A, not FAIL**.
-     Treat as backend-unavailable when: the top-level result has
-     `"error": "sandbox required but unavailable: ..."`, or `sandbox.used` is
-     `false` with `sandbox.available` `false`, or the per-entry errors are
-     execution-infrastructure failures rather than logic — e.g. they mention
-     `sandbox`, `docker`, a remote runner (`e2b`, `prime`, `modal`), `connection`
-     / `network` / `timeout`, or a missing executor/binary. If **every** entry is
-     this kind, the env's reward simply could not be exercised here.
+   When entries come back with an `error` instead of a reward, read the entry's
+   **`error_kind`** — the tool layer tags every error structurally:
+   - **`"reward"`** — the rubric ran and raised on this completion (empty text,
+     long text, a near-miss): a real reward-function defect. Quote it. If
+     **every** entry is a `reward` error, the check is a **FAIL**.
+   - **`"infra"`** — the completion could not be executed at all (Docker down,
+     sandbox refused or returned nothing), so nothing about the reward signal
+     was actually tested. If **every** entry is `infra` — or the top-level
+     result has an `error` with `sandbox.used` false and `sandbox.available`
+     false — this check is **N/A, not FAIL**.
+
+   One judgment call remains: a `reward`-tagged error whose message clearly
+   shows the env's *own* remote execution backend missing (e.g. an e2b / prime
+   sandbox endpoint unreachable from inside the rubric) is infrastructure too —
+   treat it as `infra`.
 
    A working env whose code-runner is merely absent on this box must **not** be
    failed — say N/A and name the missing backend.

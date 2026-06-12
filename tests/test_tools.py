@@ -42,6 +42,54 @@ def test_score_discriminates():
     assert by["empty"] == 0
 
 
+FAKE_ROWS = [
+    {"prompt": "p0", "answer": "a0", "info": {}, "raw": {}},
+    {"prompt": "p1", "answer": "a1", "info": {}, "raw": {}},
+]
+
+
+def test_score_in_sandbox_batches_orders_and_tags(monkeypatch):
+    """One run_scoring call for all rows; results in input order; errors tagged."""
+    from rlenv_audit import tools
+
+    completions = [
+        {"prompt_index": 0, "label": "correct", "text": "x"},
+        {"prompt_index": 1, "label": "wrong", "text": "y"},
+        {"prompt_index": 0, "label": "correct", "text": "z"},  # duplicate label
+    ]
+    calls = []
+
+    def fake_run_scoring(env_id, items, **kw):
+        calls.append(items)
+        assert {i["task"]["prompt"] for i in items} == {"p0", "p1"}
+        return {"0": {"reward": 1.0, "metrics": {"m": 1.0}},
+                "1": {"error": "boom"}}  # "2" deliberately missing
+
+    monkeypatch.setattr("rlenv_audit.sandbox.run_scoring", fake_run_scoring)
+    out = tools._score_in_sandbox("env", completions, FAKE_ROWS)
+
+    assert len(calls) == 1                      # a single container for everything
+    assert [e["label"] for e in out] == ["correct", "wrong", "correct"]
+    assert out[0]["reward"] == 1.0 and out[0]["metrics"] == {"m": 1.0}
+    assert out[1]["error"] == "boom" and out[1]["error_kind"] == "reward"
+    assert out[2]["error_kind"] == "infra"      # no result returned for it
+
+
+def test_score_in_sandbox_infra_failure_tags_all_entries(monkeypatch):
+    from rlenv_audit import tools
+    from rlenv_audit.sandbox import SandboxError
+
+    def boom(env_id, items, **kw):
+        raise SandboxError("docker died")
+
+    monkeypatch.setattr("rlenv_audit.sandbox.run_scoring", boom)
+    out = tools._score_in_sandbox(
+        "env", [{"prompt_index": 0, "label": "c", "text": "t"}], FAKE_ROWS
+    )
+    assert out[0]["error_kind"] == "infra"
+    assert "docker died" in out[0]["error"]
+
+
 def test_build_scorecard_excludes_na_from_rating():
     card = build_scorecard({"env_id": "e", "checks": [
         {"name": "integrity", "status": "PASS", "score": 9, "justification": "x"},
