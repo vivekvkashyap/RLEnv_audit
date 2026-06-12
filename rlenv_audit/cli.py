@@ -55,14 +55,20 @@ def inspect(env_id: str, samples: int, out: str | None) -> None:
 @click.argument("env_id")
 @click.argument("completions_json", type=click.Path(exists=True))
 @click.option("--out", default=None, help="write JSON here instead of stdout.")
-def score(env_id: str, completions_json: str, out: str | None) -> None:
+@click.option(
+    "--sandbox", type=click.Choice(["auto", "on", "off"]), default="auto",
+    help="where to run scoring, since a code env's rubric executes the completion: "
+    "auto (Docker if present, else host), on (require Docker), off (host).",
+)
+def score(env_id: str, completions_json: str, out: str | None, sandbox: str) -> None:
     """Score COMPLETIONS_JSON ([{prompt_index, label, text}, ...]) through ENV_ID's
-    reward function. Used by the reward-design skill."""
+    reward function. Used by the reward-design skill. For code/agentic envs the
+    rubric runs the completion, so scoring defaults to a Docker sandbox."""
     with open(completions_json) as f:
         completions = json.load(f)
     if isinstance(completions, dict):
         completions = completions.get("completions", [])
-    _emit(score_completions(env_id, completions), out)
+    _emit(score_completions(env_id, completions, sandbox=sandbox), out)
 
 
 @main.command()

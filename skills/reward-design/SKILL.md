@@ -31,11 +31,28 @@ them through the real reward function.
 
 3. **Score them.** Run
    `rlenv-audit score <env> /tmp/envaudit_completions.json --out /tmp/envaudit_scores.json`
-   and read the `(label, prompt_index, reward)` triples. If individual entries
-   come back with an `error` instead of a reward, quote it — a reward function
-   that crashes on ordinary completions (empty text, long text) is itself a
-   defect. If **every** entry errors, this check is a **FAIL** with the error as
-   the justification.
+   and read the `(label, prompt_index, reward)` triples. For a code/agentic env
+   the rubric *executes* your completion, so scoring defaults to a Docker sandbox
+   — model-written code never runs on the host. The output carries a top-level
+   `sandbox` block (`{requested, used, available, reason}`); glance at it.
+
+   When entries come back with an `error` instead of a reward, **classify the
+   error before grading**:
+   - **Reward-function defect** — the rubric ran but mishandled an ordinary
+     completion (empty text, long text, a near-miss): a real defect. Quote it. If
+     **every** entry is this kind of error, the check is a **FAIL**.
+   - **No execution backend** — the rubric couldn't run *anywhere*, so nothing
+     about the reward signal was actually tested. This is **N/A, not FAIL**.
+     Treat as backend-unavailable when: the top-level result has
+     `"error": "sandbox required but unavailable: ..."`, or `sandbox.used` is
+     `false` with `sandbox.available` `false`, or the per-entry errors are
+     execution-infrastructure failures rather than logic — e.g. they mention
+     `sandbox`, `docker`, a remote runner (`e2b`, `prime`, `modal`), `connection`
+     / `network` / `timeout`, or a missing executor/binary. If **every** entry is
+     this kind, the env's reward simply could not be exercised here.
+
+   A working env whose code-runner is merely absent on this box must **not** be
+   failed — say N/A and name the missing backend.
 
 4. **Judge two things:**
    - **(a) Variance & discrimination.** Is there real spread in the rewards (not
@@ -51,11 +68,13 @@ them through the real reward function.
 
 Combine the two into a 0–10 score (roughly: half variance/discrimination, half
 judgment agreement). A constant reward, or correct answers not out-scoring
-garbage, is a **FAIL**.
+garbage, is a **FAIL**. If the reward could not be exercised at all because no
+execution backend was available (see step 3), report **N/A** with a `null` score
+and name the missing backend — do not FAIL.
 
 ```json
-{"name": "reward_design", "status": "PASS|WARN|FAIL", "score": <int>,
- "justification": "<one line: signal type, discrimination, agreement N/total, worst disagreement>"}
+{"name": "reward_design", "status": "PASS|WARN|FAIL|N/A", "score": <int|null>,
+ "justification": "<one line: signal type, discrimination, agreement N/total, worst disagreement — or, for N/A, the missing execution backend>"}
 ```
 
 See `REWARD_DESIGN.md` for what good reward design looks like (discrimination,

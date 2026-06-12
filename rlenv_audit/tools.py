@@ -90,13 +90,30 @@ def inspect_env(env_id: str, n: int = 20) -> dict[str, Any]:
 
 
 # ----------------------------------------------------------------------- score
-def score_completions(env_id: str, completions: list[dict]) -> dict[str, Any]:
+def score_completions(
+    env_id: str, completions: list[dict], sandbox: str = "auto"
+) -> dict[str, Any]:
     """Score agent-written completions through the env's reward function.
 
     ``completions`` is a list of ``{"prompt_index": int, "label": str,
     "text": str}``. Each is scored against that dataset row. Returns the same
     list with ``reward`` and ``metrics`` filled in (or an ``error``). This is the
     reward-design check's measurement step.
+
+    ``sandbox`` controls *where* scoring runs, because for a code/agentic env the
+    rubric **executes** the completion — model-written code we must not run on the
+    host (see ``sandbox.py``):
+
+    * ``"auto"`` (default) — score inside a locked-down Docker container when
+      Docker is reachable; otherwise fall back to host scoring and flag it.
+    * ``"on"`` — require the sandbox; if Docker is unavailable, score nothing and
+      return a backend-unavailable result (so the caller can mark the check N/A
+      rather than executing untrusted code on the host).
+    * ``"off"`` — score on the host (the old behaviour; fine for non-code envs).
+
+    The returned dict carries a top-level ``sandbox`` block
+    (``{requested, used, available, reason}``) so the reward-design skill can
+    tell "the reward function is broken" apart from "no execution backend here".
     """
     handle = load_handle(env_id)
     try:
@@ -107,23 +124,103 @@ def score_completions(env_id: str, completions: list[dict]) -> dict[str, Any]:
             return {"env_id": env_id, "error": str(exc)}
         if not rows:
             return {"env_id": env_id, "error": "environment exposes no dataset"}
-        results = []
-        for c in completions:
-            idx = max(0, min(int(c.get("prompt_index", 0)), len(rows) - 1))
-            row = rows[idx]
-            entry = {"prompt_index": idx, "label": c.get("label", ""), "text": c.get("text", "")}
-            try:
-                reward, metrics = handle.score(
-                    c.get("text", ""), row["prompt"], row["answer"], row["info"], row.get("raw")
-                )
-                entry["reward"] = reward
-                entry["metrics"] = metrics
-            except ScoringError as exc:
-                entry["error"] = str(exc)
-            results.append(entry)
-        return {"env_id": env_id, "n": len(results), "results": results}
+
+        use_sandbox, sb = _decide_sandbox(sandbox)
+        # Required isolation but no backend: refuse to execute on the host. This
+        # is the signal the reward-design check turns into N/A, not FAIL.
+        if sb["requested"] == "on" and not use_sandbox:
+            return {
+                "env_id": env_id, "n": 0, "results": [], "sandbox": sb,
+                "error": f"sandbox required but unavailable: {sb['reason']}",
+            }
+
+        if use_sandbox:
+            results = _score_in_sandbox(env_id, completions, rows)
+        else:
+            results = _score_on_host(handle, completions, rows)
+        return {"env_id": env_id, "n": len(results), "results": results, "sandbox": sb}
     finally:
         handle.teardown()
+
+
+def _decide_sandbox(mode: str) -> tuple[bool, dict[str, Any]]:
+    """Resolve the sandbox mode against Docker availability.
+
+    Returns ``(use_sandbox, status)`` where ``status`` is the ``sandbox`` block
+    surfaced to callers.
+    """
+    mode = (mode or "auto").lower()
+    if mode == "off":
+        return False, {"requested": "off", "used": False, "available": None,
+                       "reason": "host scoring (sandbox disabled)"}
+
+    from rlenv_audit.sandbox import docker_available
+
+    ok, msg = docker_available()
+    if ok:
+        return True, {"requested": mode, "used": True, "available": True, "reason": msg}
+    if mode == "on":
+        return False, {"requested": "on", "used": False, "available": False, "reason": msg}
+    # auto + no Docker: fall back to the host, but say so loudly.
+    return False, {"requested": "auto", "used": False, "available": False,
+                   "reason": f"docker unavailable, scored on host: {msg}"}
+
+
+def _score_on_host(handle: Any, completions: list[dict], rows: list[dict]) -> list[dict]:
+    """Score each completion through the env's rubric on the host (no isolation)."""
+    results = []
+    for c in completions:
+        idx = max(0, min(int(c.get("prompt_index", 0)), len(rows) - 1))
+        row = rows[idx]
+        entry = {"prompt_index": idx, "label": c.get("label", ""), "text": c.get("text", "")}
+        try:
+            reward, metrics = handle.score(
+                c.get("text", ""), row["prompt"], row["answer"], row["info"], row.get("raw")
+            )
+            entry["reward"] = reward
+            entry["metrics"] = metrics
+        except ScoringError as exc:
+            entry["error"] = str(exc)
+        results.append(entry)
+    return results
+
+
+def _score_in_sandbox(env_id: str, completions: list[dict], rows: list[dict]) -> list[dict]:
+    """Score completions inside Docker, one container per dataset row (a single
+    container scores all the completions aimed at that row). The dataset is read
+    on the host and the row is passed in via the payload, so the container never
+    needs the network — only the env's rubric, which may execute the code."""
+    from rlenv_audit.sandbox import SandboxError, run_scoring
+
+    by_row: dict[int, list[tuple[int, dict]]] = {}
+    for pos, c in enumerate(completions):
+        idx = max(0, min(int(c.get("prompt_index", 0)), len(rows) - 1))
+        by_row.setdefault(idx, []).append((pos, c))
+
+    results: list[dict | None] = [None] * len(completions)
+    for idx, items in by_row.items():
+        row = rows[idx]
+        task = {
+            "prompt": row["prompt"], "answer": row["answer"],
+            "info": row["info"], "columns": row.get("raw") or {},
+        }
+        # Use the list position as the sandbox label so duplicate human labels
+        # (two "correct"s for one row) don't collide on the way back.
+        cheats = [{"label": str(pos), "text": c.get("text", "")} for pos, c in items]
+        try:
+            scored = run_scoring(env_id, task, cheats)
+        except SandboxError as exc:
+            scored = {str(pos): {"error": f"sandbox: {exc}"} for pos, _ in items}
+        for pos, c in items:
+            r = scored.get(str(pos), {"error": "sandbox: no result returned"})
+            entry = {"prompt_index": idx, "label": c.get("label", ""), "text": c.get("text", "")}
+            if "error" in r:
+                entry["error"] = r["error"]
+            else:
+                entry["reward"] = r.get("reward")
+                entry["metrics"] = r.get("metrics", {})
+            results[pos] = entry
+    return [r for r in results if r is not None]
 
 
 # -------------------------------------------------------------------- rollouts
